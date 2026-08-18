@@ -247,7 +247,7 @@ public class DatabaseManager {
                 """;
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, template.getId());
-            ps.setString(2, template.getRank());
+            ps.setString(2, template.getRanksSerialized());
             ps.setString(3, template.getName());
             ps.setString(4, template.getWorldName());
             ps.setString(5, template.getSchematicFile());

@@ -79,7 +79,6 @@ public class DungeonInstance {
         world.setDifficulty(Difficulty.HARD);
         findMarkers();
         totalWaves = template.getMaxWave();
-        if (totalWaves == 0) totalWaves = 3;
         // Stay CREATING until chunks are loaded and the first player is teleported in.
     }
 
@@ -140,7 +139,15 @@ public class DungeonInstance {
         GateDungeonPlugin plugin = GateDungeonPlugin.getInstance();
         plugin.getWorldManager().ensureSafePlatform(world, entrance);
         int radius = plugin.getConfigManager().getChunkLoadRadius();
-        plugin.getWorldManager().preloadAround(world, entrance, radius, this::onChunksReady);
+        List<Location> centers = new ArrayList<>();
+        if (entrance != null) centers.add(entrance);
+        for (RegionMarker region : template.getRegions()) {
+            centers.add(new Location(world,
+                    (region.getMinX() + region.getMaxX()) / 2.0 + 0.5,
+                    (region.getMinY() + region.getMaxY()) / 2.0,
+                    (region.getMinZ() + region.getMaxZ()) / 2.0 + 0.5));
+        }
+        plugin.getWorldManager().preloadLocations(world, centers, radius, this::onChunksReady);
     }
 
     private void onChunksReady() {
@@ -297,6 +304,11 @@ public class DungeonInstance {
         if (state == State.ACTIVE || state == State.BOSS || state == State.COMPLETED) return;
         if (state == State.DESTROYED || state == State.CLEANUP) return;
         state = State.ACTIVE;
+        if (totalWaves <= 0) {
+            sendSubtitle("§c⚔ No wave regions — boss fight!");
+            triggerBoss();
+            return;
+        }
         sendSubtitle("§c⚔ Wave 1 — Fight!");
         spawnWave(1);
     }
@@ -309,8 +321,8 @@ public class DungeonInstance {
             return;
         }
 
-        List<RegionMarker> regions = template.getRegionsByWave(wave);
-        if (regions.isEmpty()) {
+        List<RegionMarker> waveRegions = template.getRegionsByWave(wave);
+        if (waveRegions.isEmpty()) {
             GateDungeonPlugin.getInstance().getLogger().info("No regions for wave " + wave + " – skipping.");
             if (wave >= totalWaves) {
                 triggerBoss();
@@ -327,20 +339,37 @@ public class DungeonInstance {
             mobEntries = getDefaultMobs(wave);
         }
 
+        List<RegionMarker> mobRegions = new ArrayList<>();
+        List<RegionMarker> eliteRegions = new ArrayList<>();
+        for (RegionMarker region : waveRegions) {
+            if (region.isElite()) eliteRegions.add(region);
+            else mobRegions.add(region);
+        }
+
         List<LivingEntity> waveEntities = new ArrayList<>();
+        int spawned = 0;
         for (ConfigManager.MobEntry entry : mobEntries) {
+            List<RegionMarker> targets = selectRegionsForEntry(entry, waveRegions, mobRegions, eliteRegions);
+            if (targets.isEmpty()) continue;
             int amount = Math.max(0, entry.amount);
             for (int i = 0; i < amount; i++) {
-                RegionMarker region = regions.get(i % regions.size());
-                Location spawnLoc = safeSpawn(region.getRandomLocation(world), i);
-                if (spawnLoc == null) continue;
+                RegionMarker region = targets.get(i % targets.size());
+                Location spawnLoc = safeSpawnInRegion(region, i);
+                if (spawnLoc == null) {
+                    GateDungeonPlugin.getInstance().getLogger().warning(
+                            "Could not place a mob for wave " + wave + " in region " + region.getId());
+                    continue;
+                }
                 LivingEntity mob = spawnMob(spawnLoc, entry.type, entry.name, entry.health, entry.damage);
                 if (mob != null) {
                     waveEntities.add(mob);
                     spawnedMobs.computeIfAbsent(region.getId(), k -> new ArrayList<>()).add(mob);
+                    spawned++;
                 }
             }
         }
+        GateDungeonPlugin.getInstance().getLogger().info(
+                "Wave " + wave + " spawned " + spawned + " mobs across " + waveRegions.size() + " region(s).");
 
         sendSubtitle("§e⚔ Wave " + wave + " started!");
 
@@ -370,20 +399,39 @@ public class DungeonInstance {
         }.runTaskTimer(GateDungeonPlugin.getInstance(), 20L, 20L);
     }
 
-    private Location safeSpawn(Location candidate, int index) {
-        Location base = candidate;
-        if (base == null || base.getWorld() == null) {
-            base = entrance != null ? entrance.clone() : world.getSpawnLocation();
+    private List<RegionMarker> selectRegionsForEntry(ConfigManager.MobEntry entry,
+                                                     List<RegionMarker> waveRegions,
+                                                     List<RegionMarker> mobRegions,
+                                                     List<RegionMarker> eliteRegions) {
+        if (entry != null && entry.isElite()) {
+            return eliteRegions.isEmpty() ? waveRegions : eliteRegions;
         }
-        base.setWorld(world);
-        if (base.getBlock().getRelative(0, -1, 0).getType().isAir()
-                || base.getY() < world.getMinHeight() + 2) {
-            Location fallback = entrance != null ? entrance.clone() : world.getSpawnLocation().clone();
-            fallback.setWorld(world);
-            fallback.add((index % 5) - 2, 0, (index / 5) % 3);
-            base = fallback;
-        }
-        return base;
+        return mobRegions.isEmpty() ? waveRegions : mobRegions;
+    }
+
+    /**
+     * Always spawn inside the assigned region. Never fall back to the dungeon entrance.
+     */
+    private Location safeSpawnInRegion(RegionMarker region, int index) {
+        if (region == null) return null;
+        Location candidate = region.getRandomLocation(world);
+        if (isUsableSpawn(candidate, region)) return candidate;
+
+        Location center = region.getCenterLocation(world);
+        if (isUsableSpawn(center, region)) return center;
+
+        int x = region.getMinX() + (Math.floorMod(index, Math.max(1, region.getSizeX())));
+        int z = region.getMinZ() + (Math.floorMod(index / Math.max(1, region.getSizeX()), Math.max(1, region.getSizeZ())));
+        double y = Math.max(region.getMinY(), Math.min(region.getMaxY(), region.getMinY() + 1));
+        Location lastResort = new Location(world, x + 0.5, y, z + 0.5);
+        world.getChunkAt(lastResort);
+        return lastResort;
+    }
+
+    private boolean isUsableSpawn(Location location, RegionMarker region) {
+        if (location == null || location.getWorld() == null || region == null) return false;
+        location.setWorld(world);
+        return region.containsColumn(location.getBlockX(), location.getBlockZ());
     }
 
     private List<ConfigManager.MobEntry> getDefaultMobs(int wave) {
@@ -404,6 +452,8 @@ public class DungeonInstance {
         try {
             EntityType type = EntityType.valueOf(typeName.toUpperCase());
             if (!type.isAlive() || !type.isSpawnable()) return null;
+            location.setWorld(world);
+            world.getChunkAt(location);
             LivingEntity entity = (LivingEntity) world.spawnEntity(location, type);
             entity.setPersistent(true);
             entity.setRemoveWhenFarAway(false);

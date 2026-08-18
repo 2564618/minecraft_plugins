@@ -125,30 +125,46 @@ public class WorldManager {
     }
 
     private void copyBuiltArea(World from, World to, DungeonTemplate template) {
+        int copied = 0;
         int radius = Math.max(32, plugin.getConfigManager().getMarkerScanRadius());
         Location center = template.getEntrance();
         if (center == null) {
             center = from.getSpawnLocation();
         }
-        int cx = center.getBlockX();
-        int cz = center.getBlockZ();
-        int minY = from.getMinHeight();
-        int maxY = from.getMaxHeight();
+        copied += copyBox(from, to,
+                center.getBlockX() - radius, from.getMinHeight(), center.getBlockZ() - radius,
+                center.getBlockX() + radius, from.getMaxHeight() - 1, center.getBlockZ() + radius);
 
+        for (var region : template.getRegions()) {
+            copied += copyBox(from, to,
+                    region.getMinX() - 2, region.getMinY() - 2, region.getMinZ() - 2,
+                    region.getMaxX() + 2, region.getMaxY() + 2, region.getMaxZ() + 2);
+        }
+        for (var marker : template.getMarkers()) {
+            Location loc = marker.getLocation();
+            copied += copyBox(from, to,
+                    loc.getBlockX() - 2, loc.getBlockY() - 2, loc.getBlockZ() - 2,
+                    loc.getBlockX() + 2, loc.getBlockY() + 2, loc.getBlockZ() + 2);
+        }
+        plugin.getLogger().info("Copied " + copied + " blocks from " + from.getName() + " to " + to.getName());
+    }
+
+    private int copyBox(World from, World to, int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
+        int yMin = Math.max(minY, from.getMinHeight());
+        int yMax = Math.min(maxY, from.getMaxHeight() - 1);
+        if (yMax < yMin) return 0;
         int copied = 0;
-        for (int x = cx - radius; x <= cx + radius; x++) {
-            for (int z = cz - radius; z <= cz + radius; z++) {
-                for (int y = minY; y < maxY; y++) {
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                for (int y = yMin; y <= yMax; y++) {
                     Block src = from.getBlockAt(x, y, z);
-                    Material type = src.getType();
-                    if (type.isAir()) continue;
-                    Block dest = to.getBlockAt(x, y, z);
-                    dest.setBlockData(src.getBlockData(), false);
+                    if (src.getType().isAir()) continue;
+                    to.getBlockAt(x, y, z).setBlockData(src.getBlockData(), false);
                     copied++;
                 }
             }
         }
-        plugin.getLogger().info("Copied " + copied + " blocks from " + from.getName() + " to " + to.getName());
+        return copied;
     }
 
     private void applyBuilderRules(World world) {
@@ -245,29 +261,47 @@ public class WorldManager {
      * plugin, then run {@code onDone} on the main thread.
      */
     public void preloadAround(World world, Location center, int chunkRadius, Runnable onDone) {
-        if (world == null || center == null) {
+        if (center == null) {
+            preloadLocations(world, List.of(), chunkRadius, onDone);
+            return;
+        }
+        preloadLocations(world, List.of(center), chunkRadius, onDone);
+    }
+
+    public void preloadLocations(World world, List<Location> centers, int chunkRadius, Runnable onDone) {
+        if (world == null) {
             if (onDone != null) Bukkit.getScheduler().runTask(plugin, onDone);
             return;
         }
-        int cx = center.getBlockX() >> 4;
-        int cz = center.getBlockZ() >> 4;
+        int radius = Math.max(1, chunkRadius);
         List<CompletableFuture<?>> futures = new ArrayList<>();
-        for (int x = cx - chunkRadius; x <= cx + chunkRadius; x++) {
-            for (int z = cz - chunkRadius; z <= cz + chunkRadius; z++) {
-                world.addPluginChunkTicket(x, z, plugin);
-                try {
-                    futures.add(world.getChunkAtAsync(x, z));
-                } catch (Throwable ignored) {
-                    world.getChunkAt(x, z);
+        java.util.HashSet<Long> seen = new java.util.HashSet<>();
+        if (centers != null) {
+            for (Location center : centers) {
+                if (center == null) continue;
+                int cx = center.getBlockX() >> 4;
+                int cz = center.getBlockZ() >> 4;
+                for (int x = cx - radius; x <= cx + radius; x++) {
+                    for (int z = cz - radius; z <= cz + radius; z++) {
+                        long key = (((long) x) << 32) ^ (z & 0xffffffffL);
+                        if (!seen.add(key)) continue;
+                        world.addPluginChunkTicket(x, z, plugin);
+                        try {
+                            futures.add(world.getChunkAtAsync(x, z));
+                        } catch (Throwable ignored) {
+                            world.getChunkAt(x, z);
+                        }
+                    }
                 }
             }
         }
         if (futures.isEmpty()) {
-            Bukkit.getScheduler().runTask(plugin, onDone);
+            if (onDone != null) Bukkit.getScheduler().runTask(plugin, onDone);
             return;
         }
-        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).whenComplete((v, ex) ->
-                Bukkit.getScheduler().runTask(plugin, onDone));
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).whenComplete((v, ex) -> {
+            if (onDone != null) Bukkit.getScheduler().runTask(plugin, onDone);
+        });
     }
 
     /** Places a small solid pad if the landing block is air so players cannot drop into void. */
