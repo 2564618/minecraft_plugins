@@ -1,0 +1,55 @@
+name: GateDungeon
+version: ${project.version}
+main: com.maya4pa.gatedungeon.GateDungeonPlugin
+api-version: 1.21
+author: maya4pa
+description: Solo Leveling inspired Gate & Dungeon system
+
+commands:
+  gatedungeon:
+    description: Main GateDungeon command
+    usage: /<command> <create|assign|spawn|remove|list|reload|dungeon>
+    aliases: [gd, gate]
+    permission: gatedungeon.admin
+
+permissions:
+  gatedungeon.admin:
+    description: Full access to all commands
+    default: op
+    children:
+      gatedungeon.gate.spawn: true
+      gatedungeon.gate.remove: true
+      gatedungeon.gate.list: true
+      gatedungeon.dungeon.register: true
+      gatedungeon.dungeon.unregister: true
+      gatedungeon.dungeon.create: true
+      gatedungeon.dungeon.assign: true
+      gatedungeon.reload: true
+      gatedungeon.dungeon.admin: true
+  gatedungeon.gate.spawn:
+    description: Spawn a gate
+    default: op
+  gatedungeon.gate.remove:
+    description: Remove a gate
+    default: op
+  gatedungeon.gate.list:
+    description: List gates
+    default: op
+  gatedungeon.dungeon.register:
+    description: Register a dungeon template
+    default: op
+  gatedungeon.dungeon.unregister:
+    description: Unregister a template
+    default: op
+  gatedungeon.dungeon.create:
+    description: Create a named dungeon builder world
+    default: op
+  gatedungeon.dungeon.assign:
+    description: Assign a dungeon world to a rank template pool
+    default: op
+  gatedungeon.reload:
+    description: Reload configuration
+    default: op
+  gatedungeon.dungeon.admin:
+    description: Create worlds, manage regions, force-exit players
+    default: op

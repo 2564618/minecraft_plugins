@@ -1,0 +1,55 @@
+# GateDungeon Configuration
+debug: false
+
+ranks:
+  - E
+  - D
+  - C
+  - B
+  - A
+  - S
+
+gate:
+  expiration-minutes: -1
+  min-distance-between-gates: 50
+  max-players-per-gate: 20
+  auto-remove-timer: 300
+  boss-defeat-removal-delay: 60
+
+instance:
+  max-active-instances: 50
+  cleanup-interval: 30
+  use-worldedit: true
+  # Seconds after the first player arrives before wave 1. Later joiners do not reset this.
+  prep-seconds: 30
+  # Chunks around the entrance to force-load before teleporting anyone in.
+  chunk-load-radius: 3
+  # Ticks to wait after chunks load before the first teleport.
+  settle-ticks: 20
+
+visuals:
+  hologram-provider: "armor_stand"
+  use-reduced-effects: false
+  rank-colors:
+    E: "&7"
+    D: "&a"
+    C: "&9"
+    B: "&5"
+    A: "&c"
+    S: "&6"
+
+markers:
+  scan-radius: 50
+  entrance: "GOLD_BLOCK"
+  boss-spawn: "DIAMOND_BLOCK"
+  exit: "EMERALD_BLOCK"
+  loot: "CHEST"
+  teleport-offset-y: 1.0
+
+wave-tool: "STICK"
+
+exit:
+  area-radius: 5
+  teleport-delay-seconds: 5
+  particle-effect: true
+  sound-effect: true

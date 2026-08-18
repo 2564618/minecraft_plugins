@@ -1,0 +1,1096 @@
+# ============================================================
+# DUNGEON MOB & BOSS CONFIGURATION
+# ============================================================
+#
+# Each dungeon rank has:
+#   - Multiple waves
+#   - Different mobs per wave
+#   - A final boss
+#
+# Boss features:
+#   - Health
+#   - Damage
+#   - Armor
+#   - Speed
+#   - Knockback resistance
+#   - Boss bar
+#   - Phases
+#   - Abilities
+#   - Minion summoning
+#   - Enrage
+#   - Rewards
+#
+# ============================================================
+
+ranks:
+
+  # ==========================================================
+  # E RANK
+  # ==========================================================
+  E:
+    waves:
+
+      1:
+        mobs:
+          - type: ZOMBIE
+            name: "&aGoblin"
+            amount: 3
+            health: 20
+            damage: 3
+
+          - type: SKELETON
+            name: "&eGoblin Archer"
+            amount: 2
+            health: 16
+            damage: 4
+
+      2:
+        mobs:
+          - type: ZOMBIE
+            name: "&cElite Goblin"
+            amount: 5
+            health: 30
+            damage: 5
+
+      3:
+        mobs:
+          - type: ZOMBIE
+            name: "&5Goblin Berserker"
+            amount: 8
+            health: 40
+            damage: 7
+            speed: 0.30
+
+    boss:
+
+      type: ZOMBIE
+      name: "&cGoblin King"
+
+      # --------------------------
+      # Base Stats
+      # --------------------------
+      health: 200
+      damage: 10
+      armor: 8
+      speed: 0.25
+      knockback-resistance: 0.4
+
+      # --------------------------
+      # Boss Bar
+      # --------------------------
+      boss-bar:
+        enabled: true
+        title: "&c&lGOBLIN KING &7| &f{health}/{max_health}"
+        color: RED
+        style: SEGMENTED_10
+
+      # --------------------------
+      # Phases
+      # --------------------------
+      phases:
+
+        phase-1:
+          health-percent: 100
+          message: "&cThe Goblin King has awakened!"
+
+          abilities:
+
+            - id: "GROUND_SMASH"
+              cooldown: 15
+              damage: 8
+              radius: 5
+              knockback: 1.5
+              warning-time: 2
+
+        phase-2:
+          health-percent: 60
+          message: "&4&lThe Goblin King is enraged!"
+
+          damage-multiplier: 1.25
+          speed-multiplier: 1.15
+
+          abilities:
+
+            - id: "GROUND_SMASH"
+              cooldown: 12
+              damage: 12
+              radius: 6
+              knockback: 2
+
+            - id: "SUMMON_MINIONS"
+              cooldown: 25
+              amount: 4
+              mob:
+                type: ZOMBIE
+                name: "&aGoblin Warrior"
+                health: 30
+                damage: 6
+
+        phase-3:
+          health-percent: 25
+          message: "&4&lThe Goblin King is furious!"
+
+          damage-multiplier: 1.5
+          speed-multiplier: 1.25
+
+          abilities:
+
+            - id: "GROUND_SMASH"
+              cooldown: 8
+              damage: 15
+              radius: 7
+              knockback: 2.5
+
+            - id: "SUMMON_MINIONS"
+              cooldown: 20
+              amount: 6
+              mob:
+                type: ZOMBIE
+                name: "&cGoblin Berserker"
+                health: 45
+                damage: 8
+
+      # --------------------------
+      # Enrage
+      # --------------------------
+      enrage:
+        enabled: true
+        time: 300
+        message: "&4&lTHE GOBLIN KING HAS BECOME ENRAGED!"
+        damage-multiplier: 2.0
+        speed-multiplier: 1.3
+
+      # --------------------------
+      # Rewards
+      # --------------------------
+      rewards:
+        exp: 500
+        money: 100
+        soul-points: 2
+
+        items:
+          - material: GOLD_INGOT
+            amount: 3
+            chance: 0.50
+
+          - material: EMERALD
+            amount: 2
+            chance: 0.30
+
+          - material: DIAMOND
+            amount: 1
+            chance: 0.05
+
+
+  # ==========================================================
+  # D RANK
+  # ==========================================================
+  D:
+    waves:
+
+      1:
+        mobs:
+          - type: ZOMBIE
+            name: "&aGoblin"
+            amount: 4
+            health: 25
+            damage: 4
+
+          - type: SKELETON
+            name: "&eGoblin Archer"
+            amount: 3
+            health: 20
+            damage: 5
+
+      2:
+        mobs:
+          - type: ZOMBIE
+            name: "&cElite Goblin"
+            amount: 6
+            health: 40
+            damage: 7
+
+      3:
+        mobs:
+          - type: WITHER_SKELETON
+            name: "&dDark Goblin"
+            amount: 8
+            health: 50
+            damage: 9
+
+    boss:
+
+      type: WITHER_SKELETON
+      name: "&4&lDark Lord"
+
+      health: 400
+      damage: 15
+      armor: 12
+      speed: 0.28
+      knockback-resistance: 0.6
+
+      boss-bar:
+        enabled: true
+        title: "&4&lDARK LORD &7| &f{health}/{max_health}"
+        color: DARK_RED
+        style: SEGMENTED_10
+
+      phases:
+
+        phase-1:
+          health-percent: 100
+          message: "&4Dark Lord: &fYou dare enter my domain?"
+
+          abilities:
+
+            - id: "DARK_SLASH"
+              cooldown: 12
+              damage: 12
+              radius: 4
+
+            - id: "SHADOW_STEP"
+              cooldown: 20
+              range: 12
+
+        phase-2:
+          health-percent: 60
+          message: "&4Dark Lord has entered Phase 2!"
+
+          damage-multiplier: 1.3
+          speed-multiplier: 1.15
+
+          abilities:
+
+            - id: "DARK_SLASH"
+              cooldown: 9
+              damage: 18
+              radius: 5
+
+            - id: "SUMMON_MINIONS"
+              cooldown: 25
+              amount: 4
+              mob:
+                type: WITHER_SKELETON
+                name: "&8Shadow Knight"
+                health: 60
+                damage: 10
+
+        phase-3:
+          health-percent: 25
+          message: "&4&lDARK LORD HAS UNLEASHED HIS TRUE POWER!"
+
+          damage-multiplier: 1.7
+          speed-multiplier: 1.3
+
+          abilities:
+
+            - id: "DARK_SLASH"
+              cooldown: 6
+              damage: 25
+              radius: 6
+
+            - id: "SHADOW_STEP"
+              cooldown: 10
+              range: 15
+
+            - id: "SUMMON_MINIONS"
+              cooldown: 15
+              amount: 6
+              mob:
+                type: WITHER_SKELETON
+                name: "&5Shadow Knight"
+                health: 80
+                damage: 12
+
+      enrage:
+        enabled: true
+        time: 360
+        message: "&4&lDARK LORD HAS ENTERED ENRAGE!"
+        damage-multiplier: 2.2
+        speed-multiplier: 1.35
+
+      rewards:
+        exp: 1000
+        money: 250
+        soul-points: 4
+
+        items:
+          - material: GOLD_INGOT
+            amount: 5
+            chance: 0.60
+
+          - material: EMERALD
+            amount: 4
+            chance: 0.40
+
+          - material: DIAMOND
+            amount: 2
+            chance: 0.10
+
+
+  # ==========================================================
+  # C RANK
+  # ==========================================================
+  C:
+    waves:
+
+      1:
+        mobs:
+          - type: ZOMBIE
+            name: "&aOrc Grunt"
+            amount: 6
+            health: 45
+            damage: 7
+
+          - type: SKELETON
+            name: "&eOrc Archer"
+            amount: 4
+            health: 30
+            damage: 8
+
+      2:
+        mobs:
+          - type: ZOMBIE
+            name: "&cOrc Warrior"
+            amount: 8
+            health: 65
+            damage: 10
+
+      3:
+        mobs:
+          - type: WITHER_SKELETON
+            name: "&5Orc Elite"
+            amount: 10
+            health: 90
+            damage: 14
+
+      4:
+        mobs:
+          - type: VINDICATOR
+            name: "&4Orc Executioner"
+            amount: 6
+            health: 120
+            damage: 18
+
+    boss:
+
+      type: VINDICATOR
+      name: "&4&lORC WARLORD"
+
+      health: 800
+      damage: 22
+      armor: 18
+      speed: 0.30
+      knockback-resistance: 0.8
+
+      boss-bar:
+        enabled: true
+        title: "&4&lORC WARLORD &7| &f{health}/{max_health}"
+        color: DARK_RED
+        style: SEGMENTED_12
+
+      phases:
+
+        phase-1:
+          health-percent: 100
+
+          abilities:
+            - id: "GROUND_SMASH"
+              cooldown: 15
+              damage: 20
+              radius: 7
+              knockback: 3
+
+            - id: "CHARGE"
+              cooldown: 18
+              damage: 25
+              range: 15
+
+        phase-2:
+          health-percent: 60
+
+          damage-multiplier: 1.35
+
+          abilities:
+            - id: "GROUND_SMASH"
+              cooldown: 10
+              damage: 30
+              radius: 8
+
+            - id: "CHARGE"
+              cooldown: 12
+              damage: 35
+              range: 18
+
+            - id: "SUMMON_MINIONS"
+              cooldown: 25
+              amount: 5
+              mob:
+                type: VINDICATOR
+                name: "&cOrc Warrior"
+                health: 100
+                damage: 15
+
+        phase-3:
+          health-percent: 25
+
+          damage-multiplier: 1.8
+          speed-multiplier: 1.2
+
+          abilities:
+            - id: "GROUND_SMASH"
+              cooldown: 6
+              damage: 45
+              radius: 10
+
+            - id: "CHARGE"
+              cooldown: 8
+              damage: 50
+              range: 20
+
+            - id: "SUMMON_MINIONS"
+              cooldown: 15
+              amount: 8
+              mob:
+                type: VINDICATOR
+                name: "&4Orc Berserker"
+                health: 150
+                damage: 22
+
+      enrage:
+        enabled: true
+        time: 420
+        damage-multiplier: 2.5
+        speed-multiplier: 1.4
+
+      rewards:
+        exp: 2500
+        money: 500
+        soul-points: 7
+
+        items:
+          - material: DIAMOND
+            amount: 3
+            chance: 0.30
+
+          - material: EMERALD
+            amount: 8
+            chance: 0.50
+
+          - material: NETHERITE_SCRAP
+            amount: 1
+            chance: 0.05
+
+
+  # ==========================================================
+  # B RANK
+  # ==========================================================
+  B:
+    waves:
+
+      1:
+        mobs:
+          - type: HUSK
+            name: "&6Desert Warrior"
+            amount: 8
+            health: 70
+            damage: 12
+
+          - type: STRAY
+            name: "&bFrozen Archer"
+            amount: 5
+            health: 50
+            damage: 12
+
+      2:
+        mobs:
+          - type: PIGLIN_BRUTE
+            name: "&cNether Warrior"
+            amount: 8
+            health: 100
+            damage: 18
+
+      3:
+        mobs:
+          - type: WITHER_SKELETON
+            name: "&5Death Knight"
+            amount: 10
+            health: 140
+            damage: 22
+
+      4:
+        mobs:
+          - type: VINDICATOR
+            name: "&4Executioner"
+            amount: 8
+            health: 180
+            damage: 28
+
+    boss:
+
+      type: PIGLIN_BRUTE
+      name: "&6&lANCIENT WARLORD"
+
+      health: 1500
+      damage: 30
+      armor: 22
+      speed: 0.32
+      knockback-resistance: 0.9
+
+      boss-bar:
+        enabled: true
+        title: "&6&lANCIENT WARLORD &7| &f{health}/{max_health}"
+        color: YELLOW
+        style: SEGMENTED_12
+
+      phases:
+
+        phase-1:
+          health-percent: 100
+
+          abilities:
+            - id: "FIRE_SLAM"
+              cooldown: 15
+              damage: 30
+              radius: 7
+
+            - id: "CHARGE"
+              cooldown: 15
+              damage: 40
+              range: 20
+
+        phase-2:
+          health-percent: 70
+
+          damage-multiplier: 1.4
+
+          abilities:
+            - id: "FIRE_SLAM"
+              cooldown: 10
+              damage: 45
+              radius: 9
+
+            - id: "FIRE_PROJECTILE"
+              cooldown: 12
+              damage: 35
+              amount: 3
+
+            - id: "SUMMON_MINIONS"
+              cooldown: 25
+              amount: 6
+              mob:
+                type: PIGLIN_BRUTE
+                name: "&cAncient Guard"
+                health: 180
+                damage: 25
+
+        phase-3:
+          health-percent: 35
+
+          damage-multiplier: 1.8
+          speed-multiplier: 1.25
+
+          abilities:
+            - id: "METEOR"
+              cooldown: 15
+              damage: 60
+              radius: 10
+
+            - id: "FIRE_SLAM"
+              cooldown: 7
+              damage: 60
+              radius: 11
+
+            - id: "SUMMON_MINIONS"
+              cooldown: 15
+              amount: 8
+              mob:
+                type: WITHER_SKELETON
+                name: "&5Ancient Death Knight"
+                health: 220
+                damage: 30
+
+      enrage:
+        enabled: true
+        time: 480
+        damage-multiplier: 2.5
+        speed-multiplier: 1.5
+
+      rewards:
+        exp: 5000
+        money: 1000
+        soul-points: 12
+
+        items:
+          - material: DIAMOND
+            amount: 5
+            chance: 0.50
+
+          - material: NETHERITE_SCRAP
+            amount: 2
+            chance: 0.15
+
+          - material: NETHERITE_INGOT
+            amount: 1
+            chance: 0.03
+
+
+  # ==========================================================
+  # A RANK
+  # ==========================================================
+  A:
+    waves:
+
+      1:
+        mobs:
+          - type: WARDEN
+            name: "&8Dungeon Guardian"
+            amount: 1
+            health: 500
+            damage: 30
+
+          - type: WITHER_SKELETON
+            name: "&5Death Knight"
+            amount: 8
+            health: 180
+            damage: 25
+
+      2:
+        mobs:
+          - type: RAVAGER
+            name: "&4Dungeon Beast"
+            amount: 4
+            health: 300
+            damage: 30
+
+          - type: VINDICATOR
+            name: "&cElite Executioner"
+            amount: 8
+            health: 250
+            damage: 32
+
+      3:
+        mobs:
+          - type: WITCH
+            name: "&dDark Mage"
+            amount: 5
+            health: 200
+            damage: 25
+
+          - type: WITHER_SKELETON
+            name: "&8Death Knight"
+            amount: 10
+            health: 250
+            damage: 35
+
+      4:
+        mobs:
+          - type: RAVAGER
+            name: "&4War Beast"
+            amount: 6
+            health: 400
+            damage: 40
+
+    boss:
+
+      type: RAVAGER
+      name: "&5&lABYSSAL DESTROYER"
+
+      health: 3000
+      damage: 45
+      armor: 30
+      speed: 0.35
+      knockback-resistance: 1.0
+
+      boss-bar:
+        enabled: true
+        title: "&5&lABYSSAL DESTROYER &7| &f{health}/{max_health}"
+        color: PURPLE
+        style: SEGMENTED_20
+
+      phases:
+
+        phase-1:
+          health-percent: 100
+
+          abilities:
+            - id: "CHARGE"
+              cooldown: 15
+              damage: 60
+              range: 25
+
+            - id: "GROUND_SMASH"
+              cooldown: 15
+              damage: 50
+              radius: 10
+
+        phase-2:
+          health-percent: 75
+
+          damage-multiplier: 1.4
+
+          abilities:
+            - id: "VOID_BLAST"
+              cooldown: 12
+              damage: 70
+              radius: 8
+
+            - id: "SUMMON_MINIONS"
+              cooldown: 25
+              amount: 6
+              mob:
+                type: RAVAGER
+                name: "&4Abyss Beast"
+                health: 500
+                damage: 45
+
+        phase-3:
+          health-percent: 50
+
+          damage-multiplier: 1.7
+          speed-multiplier: 1.2
+
+          abilities:
+            - id: "VOID_BLAST"
+              cooldown: 8
+              damage: 90
+              radius: 10
+
+            - id: "METEOR"
+              cooldown: 15
+              damage: 100
+              radius: 12
+
+            - id: "SUMMON_MINIONS"
+              cooldown: 18
+              amount: 8
+              mob:
+                type: WITHER_SKELETON
+                name: "&5Abyss Knight"
+                health: 350
+                damage: 45
+
+        phase-4:
+          health-percent: 20
+
+          damage-multiplier: 2.2
+          speed-multiplier: 1.35
+
+          abilities:
+            - id: "VOID_BLAST"
+              cooldown: 5
+              damage: 120
+              radius: 12
+
+            - id: "GROUND_SMASH"
+              cooldown: 5
+              damage: 100
+              radius: 15
+
+            - id: "SUMMON_MINIONS"
+              cooldown: 12
+              amount: 10
+              mob:
+                type: RAVAGER
+                name: "&4Abyss Berserker"
+                health: 700
+                damage: 60
+
+      enrage:
+        enabled: true
+        time: 600
+        damage-multiplier: 3.0
+        speed-multiplier: 1.5
+
+      rewards:
+        exp: 10000
+        money: 2500
+        soul-points: 20
+
+        items:
+          - material: DIAMOND
+            amount: 10
+            chance: 0.60
+
+          - material: NETHERITE_SCRAP
+            amount: 4
+            chance: 0.30
+
+          - material: NETHERITE_INGOT
+            amount: 1
+            chance: 0.10
+
+
+  # ==========================================================
+  # S RANK
+  # ==========================================================
+  S:
+    waves:
+
+      1:
+        mobs:
+          - type: WITHER_SKELETON
+            name: "&8Abyss Knight"
+            amount: 10
+            health: 350
+            damage: 45
+
+          - type: EVOKER
+            name: "&5Abyss Mage"
+            amount: 4
+            health: 300
+            damage: 40
+
+      2:
+        mobs:
+          - type: RAVAGER
+            name: "&4Abyss Beast"
+            amount: 8
+            health: 600
+            damage: 55
+
+          - type: VINDICATOR
+            name: "&cAbyss Executioner"
+            amount: 10
+            health: 400
+            damage: 50
+
+      3:
+        mobs:
+          - type: WARDEN
+            name: "&8Dungeon Guardian"
+            amount: 2
+            health: 1000
+            damage: 70
+
+      4:
+        mobs:
+          - type: WITHER_SKELETON
+            name: "&5Abyss Commander"
+            amount: 12
+            health: 500
+            damage: 60
+
+          - type: EVOKER
+            name: "&dAbyss High Mage"
+            amount: 6
+            health: 500
+            damage: 55
+
+      5:
+        mobs:
+          - type: WARDEN
+            name: "&8Abyss Guardian"
+            amount: 3
+            health: 1500
+            damage: 80
+
+    boss:
+
+      type: WITHER
+      name: "&4&l☠ ABYSSAL SOVEREIGN ☠"
+
+      health: 10000
+      damage: 70
+      armor: 40
+      speed: 0.40
+      knockback-resistance: 1.0
+
+      boss-bar:
+        enabled: true
+        title: "&4&l☠ ABYSSAL SOVEREIGN ☠ &7| &f{health}/{max_health}"
+        color: DARK_RED
+        style: SEGMENTED_20
+
+      # ======================================================
+      # BOSS PHASES
+      # ======================================================
+
+      phases:
+
+        # ----------------------------------------------------
+        # PHASE 1 - AWAKENING
+        # ----------------------------------------------------
+        phase-1:
+          health-percent: 100
+
+          message:
+            - "&4&lABYSSAL SOVEREIGN"
+            - "&7You have entered my domain."
+
+          abilities:
+
+            - id: "VOID_BLAST"
+              cooldown: 15
+              damage: 80
+              radius: 8
+
+            - id: "SUMMON_MINIONS"
+              cooldown: 30
+              amount: 5
+
+              mob:
+                type: WITHER_SKELETON
+                name: "&5Abyss Knight"
+                health: 400
+                damage: 50
+
+        # ----------------------------------------------------
+        # PHASE 2 - DARKNESS
+        # ----------------------------------------------------
+        phase-2:
+          health-percent: 75
+
+          message:
+            - "&5&lTHE ABYSS HAS AWAKENED!"
+
+          damage-multiplier: 1.3
+          speed-multiplier: 1.15
+
+          abilities:
+
+            - id: "VOID_BLAST"
+              cooldown: 10
+              damage: 120
+              radius: 10
+
+            - id: "METEOR"
+              cooldown: 18
+              damage: 150
+              radius: 12
+
+            - id: "SUMMON_MINIONS"
+              cooldown: 25
+              amount: 8
+
+              mob:
+                type: WITHER_SKELETON
+                name: "&5Abyss Knight"
+                health: 500
+                damage: 60
+
+        # ----------------------------------------------------
+        # PHASE 3 - DESTRUCTION
+        # ----------------------------------------------------
+        phase-3:
+          health-percent: 50
+
+          message:
+            - "&4&lTHE SOVEREIGN IS UNLEASHING ITS POWER!"
+
+          damage-multiplier: 1.6
+          speed-multiplier: 1.25
+
+          abilities:
+
+            - id: "VOID_BLAST"
+              cooldown: 7
+              damage: 180
+              radius: 12
+
+            - id: "METEOR"
+              cooldown: 12
+              damage: 200
+              radius: 15
+
+            - id: "GROUND_SMASH"
+              cooldown: 8
+              damage: 150
+              radius: 15
+
+            - id: "SUMMON_MINIONS"
+              cooldown: 20
+              amount: 10
+
+              mob:
+                type: RAVAGER
+                name: "&4Abyss Beast"
+                health: 800
+                damage: 70
+
+        # ----------------------------------------------------
+        # PHASE 4 - FINAL FORM
+        # ----------------------------------------------------
+        phase-4:
+          health-percent: 25
+
+          message:
+            - "&4&l☠ THE SOVEREIGN HAS ENTERED ITS FINAL FORM! ☠"
+
+          damage-multiplier: 2.2
+          speed-multiplier: 1.4
+
+          abilities:
+
+            - id: "VOID_BLAST"
+              cooldown: 5
+              damage: 250
+              radius: 15
+
+            - id: "METEOR"
+              cooldown: 8
+              damage: 300
+              radius: 18
+
+            - id: "GROUND_SMASH"
+              cooldown: 5
+              damage: 220
+              radius: 18
+
+            - id: "SUMMON_MINIONS"
+              cooldown: 12
+              amount: 12
+
+              mob:
+                type: WARDEN
+                name: "&8Abyss Guardian"
+                health: 1500
+                damage: 90
+
+      # ======================================================
+      # ENRAGE
+      # ======================================================
+
+      enrage:
+
+        enabled: true
+
+        # Time in seconds
+        time: 600
+
+        message:
+          - "&4&l☠ ENRAGE ☠"
+          - "&cThe Abyssal Sovereign will no longer hold back!"
+
+        damage-multiplier: 3.0
+        speed-multiplier: 1.5
+
+      # ======================================================
+      # REWARDS
+      # ======================================================
+
+      rewards:
+
+        exp: 50000
+
+        money: 10000
+
+        soul-points: 50
+
+        items:
+
+          - material: DIAMOND
+            amount: 32
+            chance: 0.75
+
+          - material: NETHERITE_SCRAP
+            amount: 8
+            chance: 0.50
+
+          - material: NETHERITE_INGOT
+            amount: 2
+            chance: 0.20
+
+          - material: NETHER_STAR
+            amount: 1
+            chance: 0.01
