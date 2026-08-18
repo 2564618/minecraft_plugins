@@ -1,0 +1,16 @@
+# Maven build output
+target/
+
+# IDE metadata
+.idea/
+*.iml
+.classpath
+.project
+.settings/
+
+# Local runtime/server data
+server/
+plugins/
+*.db
+*.db-shm
+*.db-wal

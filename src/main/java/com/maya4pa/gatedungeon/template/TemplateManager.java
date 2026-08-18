@@ -13,6 +13,7 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -53,20 +54,30 @@ public class TemplateManager {
         rebuildRankIndex();
     }
 
-    public void unregisterTemplate(String id) {
-        DungeonTemplate t = templates.remove(id);
-        if (t != null) {
-            plugin.getDatabaseManager().deleteTemplate(id);
+    public boolean unregisterTemplate(String id) {
+        DungeonTemplate t = getTemplate(id);
+        if (t == null) return false;
+
+        if (!plugin.getDatabaseManager().deleteTemplate(t.getId())) return false;
+        templates.remove(t.getId());
+        if (t.getSchematicFile().matches("[a-zA-Z0-9_.-]+")) {
             File schem = new File(plugin.getDataFolder(), "schematics/" + t.getSchematicFile());
-            if (schem.exists() && !schem.delete()) {
+            if (schem.isFile() && !schem.delete()) {
                 plugin.getLogger().fine("Could not delete schematic " + schem.getName());
             }
-            rebuildRankIndex();
         }
+        rebuildRankIndex();
+        return true;
     }
 
     public DungeonTemplate getTemplate(String id) {
-        return templates.get(id);
+        if (id == null) return null;
+        DungeonTemplate exact = templates.get(id);
+        if (exact != null) return exact;
+        return templates.values().stream()
+                .filter(template -> template.getId().equalsIgnoreCase(id))
+                .findFirst()
+                .orElse(null);
     }
 
     public List<DungeonTemplate> getTemplatesByRank(String rank) {
@@ -102,7 +113,7 @@ public class TemplateManager {
     }
 
     public boolean assign(CommandSender sender, String templateId, String rank, String worldName) {
-        if (templateId == null || templateId.isEmpty()) {
+        if (!Worlds.isValidWorldName(templateId) || !Worlds.isValidWorldName(worldName)) {
             MessageUtils.send(sender, "dungeon-invalid-name");
             return false;
         }
@@ -110,10 +121,12 @@ public class TemplateManager {
             MessageUtils.send(sender, "invalid-rank");
             return false;
         }
+        String normalizedId = Worlds.normalizeWorldName(templateId);
+        String normalizedWorld = Worlds.normalizeWorldName(worldName);
         String rankKey = rank.toUpperCase();
-        World world = plugin.getWorldManager().getOrLoadWorld(worldName);
+        World world = plugin.getWorldManager().getOrLoadWorld(normalizedWorld);
         if (world == null) {
-            MessageUtils.send(sender, "template-world-missing", "world", worldName);
+            MessageUtils.send(sender, "template-world-missing", "world", normalizedWorld);
             return false;
         }
         if (Worlds.isInstanceWorld(world.getName())) {
@@ -131,9 +144,14 @@ public class TemplateManager {
         }
         world.save();
 
-        DungeonTemplate existing = getTemplate(templateId);
+        DungeonTemplate existing = getTemplate(normalizedId);
         DungeonTemplate template;
         if (existing != null) {
+            if (!existing.getWorldName().equalsIgnoreCase(world.getName())) {
+                sender.sendMessage(ChatColor.RED + "Template '" + normalizedId + "' already uses world '"
+                        + existing.getWorldName() + "'. Unregister it before assigning a different world.");
+                return false;
+            }
             existing.setRank(rankKey);
             existing.setEntrance(entrance);
             existing.clearMarkers();
@@ -143,7 +161,7 @@ public class TemplateManager {
             template = existing;
             rebuildRankIndex();
         } else {
-            template = new DungeonTemplate(templateId, rankKey, templateId, world.getName(), world.getName(),
+            template = new DungeonTemplate(normalizedId, rankKey, normalizedId, world.getName(), world.getName(),
                     entrance, System.currentTimeMillis());
             for (Marker m : scanner.getMarkers()) {
                 template.addMarker(m);
@@ -151,17 +169,26 @@ public class TemplateManager {
             registerTemplate(template);
         }
         plugin.getDatabaseManager().saveTemplate(template);
-        MessageUtils.send(sender, "dungeon-assigned", "name", templateId, "rank", rankKey);
-        plugin.getLogger().info("Assigned template '" + templateId + "' to rank " + rankKey
+        MessageUtils.send(sender, "dungeon-assigned", "name", normalizedId, "rank", rankKey);
+        plugin.getLogger().info("Assigned template '" + normalizedId + "' to rank " + rankKey
                 + " (" + getTemplatesByRank(rankKey).size() + " in pool).");
         return true;
     }
 
     public boolean addRegion(String templateId, int wave, Location pos1, Location pos2, String type) {
         DungeonTemplate template = getTemplate(templateId);
-        if (template == null) return false;
+        if (template == null || wave < 1 || pos1 == null || pos2 == null
+                || pos1.getWorld() == null || pos2.getWorld() == null
+                || !Worlds.same(pos1, pos2)
+                || !template.getWorldName().equalsIgnoreCase(pos1.getWorld().getName())) {
+            return false;
+        }
+        String normalizedType = type == null ? "" : type.toUpperCase(Locale.ROOT);
+        if (!normalizedType.equals("MOB") && !normalizedType.equals("ELITE")) return false;
+
         String regionId = UUID.randomUUID().toString().substring(0, 8);
-        RegionMarker region = new RegionMarker(regionId, wave, template.getWorldName(), pos1, pos2, type);
+        RegionMarker region = new RegionMarker(
+                regionId, wave, template.getWorldName(), pos1, pos2, normalizedType);
         template.addRegion(region);
         plugin.getDatabaseManager().saveRegions(template);
         return true;
@@ -169,8 +196,7 @@ public class TemplateManager {
 
     public boolean removeRegion(String templateId, String regionId) {
         DungeonTemplate template = getTemplate(templateId);
-        if (template == null) return false;
-        template.removeRegion(regionId);
+        if (template == null || !template.removeRegion(regionId)) return false;
         plugin.getDatabaseManager().saveRegions(template);
         return true;
     }

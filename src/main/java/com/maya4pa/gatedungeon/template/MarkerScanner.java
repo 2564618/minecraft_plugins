@@ -23,12 +23,14 @@ public class MarkerScanner {
         this.markerMap = new HashMap<>();
         // Only keep ENTRANCE, BOSS_SPAWN, EXIT, LOOT
         markerMap.put(plugin.getConfigManager().getMarkerMaterial("entrance"), "ENTRANCE");
-        markerMap.put(plugin.getConfigManager().getMarkerMaterial("boss-spawn"), "BOSS_SPAWN");
-        markerMap.put(plugin.getConfigManager().getMarkerMaterial("exit"), "EXIT");
-        markerMap.put(plugin.getConfigManager().getMarkerMaterial("loot"), "LOOT");
+        markerMap.putIfAbsent(plugin.getConfigManager().getMarkerMaterial("boss-spawn"), "BOSS_SPAWN");
+        markerMap.putIfAbsent(plugin.getConfigManager().getMarkerMaterial("exit"), "EXIT");
+        markerMap.putIfAbsent(plugin.getConfigManager().getMarkerMaterial("loot"), "LOOT");
     }
 
     public void scan() {
+        markers.clear();
+        entrance = null;
         int radius = plugin.getConfigManager().getMarkerScanRadius();
         Location spawn = world.getSpawnLocation();
         if (spawn == null) {
@@ -49,7 +51,7 @@ public class MarkerScanner {
                     world.getChunkAt(chunkX, chunkZ);
                 }
 
-                int startY = 0;
+                int startY = world.getMinHeight();
                 int endY = world.getMaxHeight();
                 for (int y = startY; y < endY; y++) {
                     Block block = world.getBlockAt(centerX + dx, y, centerZ + dz);

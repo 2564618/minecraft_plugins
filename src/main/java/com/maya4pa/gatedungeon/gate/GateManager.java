@@ -33,7 +33,7 @@ public class GateManager {
         int expirationMinutes = plugin.getConfigManager().getGateExpirationMinutes();
 
         for (Gate gate : loaded) {
-            if (expirationMinutes > 0 && gate.isExpired(expirationMinutes)) {
+            if (expirationMinutes >= 0 && gate.isExpired(expirationMinutes)) {
                 plugin.getLogger().info("Gate " + gate.getId() + " expired – removing from database.");
                 plugin.getDatabaseManager().deleteGate(gate.getId());
                 continue;
@@ -48,7 +48,7 @@ public class GateManager {
                 }
             }, Constants.TASK_DELAY_MEDIUM);
 
-            scheduleAutoRemove(gate.getId());
+            scheduleRemovalTasks(gate);
         }
         plugin.getLogger().info("Loaded " + gates.size() + " gates.");
     }
@@ -78,7 +78,7 @@ public class GateManager {
             }
         }, Constants.TASK_DELAY_MEDIUM);
 
-        scheduleAutoRemove(id);
+        scheduleRemovalTasks(gate);
         return gate;
     }
 
@@ -92,16 +92,44 @@ public class GateManager {
         return false;
     }
 
+    private void scheduleRemovalTasks(Gate gate) {
+        scheduleAutoRemove(gate.getId());
+        scheduleExpiration(gate);
+    }
+
+    private void scheduleExpiration(Gate gate) {
+        int expirationMinutes = plugin.getConfigManager().getGateExpirationMinutes();
+        if (expirationMinutes < 0) return;
+
+        long expiresAt = gate.getCreationTime() + expirationMinutes * 60_000L;
+        long delayTicks = Math.max(1L, (expiresAt - System.currentTimeMillis() + 49L) / 50L);
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            Gate currentGate = gates.get(gate.getId());
+            if (plugin.getConfigManager().getGateExpirationMinutes() != expirationMinutes
+                    || currentGate == null || !currentGate.isExpired(expirationMinutes)) return;
+            if (currentGate.getPlayersInside() == 0) {
+                removeGate(currentGate.getId());
+            } else {
+                currentGate.setClosing(true);
+            }
+        }, delayTicks);
+    }
+
     private void scheduleAutoRemove(String id) {
         int autoRemove = plugin.getConfigManager().getAutoRemoveTimer();
         if (autoRemove <= 0) return;
+        Gate gate = gates.get(id);
+        if (gate == null) return;
+        long removesAt = gate.getCreationTime() + autoRemove * 1_000L;
+        long delayTicks = Math.max(1L, (removesAt - System.currentTimeMillis() + 49L) / 50L);
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             Gate currentGate = gates.get(id);
-            if (currentGate != null && currentGate.isActive() && !currentGate.isClosing()
+            if (plugin.getConfigManager().getAutoRemoveTimer() == autoRemove
+                    && currentGate != null && currentGate.isActive() && !currentGate.isClosing()
                     && currentGate.getPlayersInside() == 0) {
                 removeGate(id);
             }
-        }, autoRemove * 20L);
+        }, delayTicks);
     }
 
     public boolean removeGate(String id) {
@@ -109,9 +137,30 @@ public class GateManager {
         if (gate == null) {
             return false;
         }
+        gate.setActive(false);
         visualizer.despawn(gate);
         plugin.getDatabaseManager().deleteGate(id);
         return true;
+    }
+
+    /**
+     * Applies reloadable settings without replacing Gate objects that may still
+     * be referenced by active dungeon instances.
+     */
+    public void applyReloadedConfiguration() {
+        int maxPlayers = plugin.getConfigManager().getMaxPlayersPerGate();
+        int expirationMinutes = plugin.getConfigManager().getGateExpirationMinutes();
+        visualizer.reloadColors();
+
+        for (Gate gate : List.copyOf(gates.values())) {
+            gate.setMaxPlayers(maxPlayers);
+            if (expirationMinutes >= 0 && gate.isExpired(expirationMinutes)
+                    && gate.getPlayersInside() == 0) {
+                removeGate(gate.getId());
+            } else {
+                scheduleRemovalTasks(gate);
+            }
+        }
     }
 
     public Gate getGate(String id) {

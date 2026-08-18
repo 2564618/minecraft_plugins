@@ -8,9 +8,8 @@ description: Solo Leveling inspired Gate & Dungeon system
 commands:
   gatedungeon:
     description: Main GateDungeon command
-    usage: /<command> <create|assign|spawn|remove|list|reload|dungeon>
+    usage: /<command> <stats|create|assign|spawn|remove|list|reload|dungeon>
     aliases: [gd, gate]
-    permission: gatedungeon.admin
 
 permissions:
   gatedungeon.admin:
@@ -25,6 +24,8 @@ permissions:
       gatedungeon.dungeon.create: true
       gatedungeon.dungeon.assign: true
       gatedungeon.reload: true
+      gatedungeon.stats: true
+      gatedungeon.stats.others: true
       gatedungeon.dungeon.admin: true
   gatedungeon.gate.spawn:
     description: Spawn a gate
@@ -49,6 +50,12 @@ permissions:
     default: op
   gatedungeon.reload:
     description: Reload configuration
+    default: op
+  gatedungeon.stats:
+    description: View your own dungeon statistics
+    default: true
+  gatedungeon.stats.others:
+    description: View another player's dungeon statistics
     default: op
   gatedungeon.dungeon.admin:
     description: Create worlds, manage regions, force-exit players
