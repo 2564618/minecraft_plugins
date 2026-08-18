@@ -53,7 +53,7 @@ public class RegionMarker {
     public int getMaxZ() { return maxZ; }
 
     public boolean contains(Location loc) {
-        if (!loc.getWorld().getName().equals(worldName)) return false;
+        if (loc == null || loc.getWorld() == null || !loc.getWorld().getName().equals(worldName)) return false;
         int x = loc.getBlockX();
         int y = loc.getBlockY();
         int z = loc.getBlockZ();

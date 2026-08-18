@@ -20,6 +20,21 @@ public final class Worlds {
         return raw.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_]", "");
     }
 
+    /** Names accepted by builder/template commands; no path separators or silent character removal. */
+    public static boolean isValidWorldName(String raw) {
+        return raw != null && raw.matches("(?i)[a-z0-9_]{1,32}");
+    }
+
+    public static String normalizeWorldName(String raw) {
+        return raw == null ? "" : raw.toLowerCase(Locale.ROOT);
+    }
+
+    /** Allows existing conventional world names while rejecting paths and control characters. */
+    public static boolean isSafeWorldReference(String raw) {
+        return raw != null && raw.matches("[a-zA-Z0-9_.-]{1,64}")
+                && !raw.equals(".") && !raw.equals("..");
+    }
+
     public static boolean isInstanceWorld(String name) {
         if (name == null || name.isEmpty()) return false;
         return name.startsWith(Constants.INSTANCE_WORLD_PREFIX)

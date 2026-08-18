@@ -80,8 +80,9 @@ public class GateVisualizer {
         String rank = gate.getRank();
         String color = plugin.getConfigManager().getRankColor(rank);
         String status = gate.isClosing() ? "&cCLOSING" : (gate.isActive() ? "&aACTIVE" : "&7INACTIVE");
-        long left = gate.getTimeLeft(plugin.getConfigManager().getGateExpirationMinutes());
-        String time = left > 0 ? formatTime(left) : "∞";
+        int expirationMinutes = plugin.getConfigManager().getGateExpirationMinutes();
+        long left = gate.getTimeLeft(expirationMinutes);
+        String time = expirationMinutes < 0 ? "∞" : formatTime(left);
         return color + rank + "-Rank Gate &7| " + gate.getPlayersInside() + "/" + gate.getMaxPlayers()
                 + " &7| " + time + " " + status;
     }

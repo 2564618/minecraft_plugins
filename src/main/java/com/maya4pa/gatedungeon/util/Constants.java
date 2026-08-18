@@ -32,6 +32,8 @@ public final class Constants {
     public static final String PERMISSION_DUNGEON_ADMIN = "gatedungeon.dungeon.admin";
     public static final String PERMISSION_DUNGEON_CREATE = "gatedungeon.dungeon.create";
     public static final String PERMISSION_DUNGEON_ASSIGN = "gatedungeon.dungeon.assign";
+    public static final String PERMISSION_STATS = "gatedungeon.stats";
+    public static final String PERMISSION_STATS_OTHERS = "gatedungeon.stats.others";
 
     /** Live instance copies created when a player enters a gate. */
     public static final String INSTANCE_WORLD_PREFIX = "gdinst_";

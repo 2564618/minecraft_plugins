@@ -2,12 +2,12 @@ package com.maya4pa.gatedungeon.listener;
 
 import com.maya4pa.gatedungeon.GateDungeonPlugin;
 import org.bukkit.Location;
-import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
 
 import java.util.HashMap;
@@ -19,8 +19,6 @@ public class RegionSelectionListener implements Listener {
     private final Map<UUID, Location> pos1 = new HashMap<>();
     private final Map<UUID, Location> pos2 = new HashMap<>();
 
-    private static final Material TOOL = Material.STICK;
-
     public RegionSelectionListener(GateDungeonPlugin plugin) {
         this.plugin = plugin;
     }
@@ -30,7 +28,7 @@ public class RegionSelectionListener implements Listener {
         Player player = event.getPlayer();
         if (!player.hasPermission("gatedungeon.dungeon.admin")) return;
         ItemStack item = player.getInventory().getItemInMainHand();
-        if (item.getType() != TOOL) return;
+        if (item.getType() != plugin.getConfigManager().getWaveTool()) return;
 
         Action action = event.getAction();
         if (action == Action.LEFT_CLICK_BLOCK) {
@@ -38,7 +36,7 @@ public class RegionSelectionListener implements Listener {
             return;
         }
 
-        if (action == Action.RIGHT_CLICK_BLOCK) {
+        if (action == Action.RIGHT_CLICK_BLOCK && event.getClickedBlock() != null) {
             Location loc = event.getClickedBlock().getLocation();
             if (player.isSneaking()) {
                 pos2.put(player.getUniqueId(), loc);
@@ -52,12 +50,21 @@ public class RegionSelectionListener implements Listener {
         }
     }
 
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        UUID playerId = event.getPlayer().getUniqueId();
+        pos1.remove(playerId);
+        pos2.remove(playerId);
+    }
+
     public Location getPos1(Player player) {
-        return pos1.get(player.getUniqueId());
+        Location location = pos1.get(player.getUniqueId());
+        return location == null ? null : location.clone();
     }
 
     public Location getPos2(Player player) {
-        return pos2.get(player.getUniqueId());
+        Location location = pos2.get(player.getUniqueId());
+        return location == null ? null : location.clone();
     }
 
     public void clearSelection(Player player) {

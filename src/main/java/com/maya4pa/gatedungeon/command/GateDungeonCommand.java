@@ -1,6 +1,7 @@
 package com.maya4pa.gatedungeon.command;
 
 import com.maya4pa.gatedungeon.GateDungeonPlugin;
+import com.maya4pa.gatedungeon.database.PlayerData;
 import com.maya4pa.gatedungeon.template.DungeonTemplate;
 import com.maya4pa.gatedungeon.template.RegionMarker;
 import com.maya4pa.gatedungeon.instance.DungeonInstance;
@@ -19,6 +20,7 @@ import org.bukkit.entity.Player;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public class GateDungeonCommand implements CommandExecutor {
@@ -35,18 +37,16 @@ public class GateDungeonCommand implements CommandExecutor {
             return true;
         }
 
-        String sub = args[0].toLowerCase();
+        String sub = args[0].toLowerCase(Locale.ROOT);
         switch (sub) {
             case "reload" -> {
                 if (!sender.hasPermission("gatedungeon.reload")) {
                     MessageUtils.send(sender, "no-permission");
                     return true;
                 }
-plugin.getConfigManager().loadConfigs();
+                plugin.getConfigManager().loadConfigs();
                 MessageUtils.init(plugin);
-                plugin.getGateManager().getVisualizer().reloadColors();
-                plugin.getTemplateManager().loadFromDatabase();
-                plugin.getGateManager().loadFromDatabase();
+                plugin.getGateManager().applyReloadedConfiguration();
                 MessageUtils.send(sender, "reloaded");
                 return true;
             }
@@ -63,7 +63,7 @@ plugin.getConfigManager().loadConfigs();
                     sender.sendMessage(ChatColor.RED + "Usage: /gd spawn <rank>");
                     return true;
                 }
-                String rank = args[1].toUpperCase();
+                String rank = args[1].toUpperCase(Locale.ROOT);
                 var gate = plugin.getGateManager().createGate(player.getLocation(), rank, player);
                 if (gate == null) {
                     sender.sendMessage(ChatColor.RED + "Failed to spawn gate. Check rank or distance.");
@@ -132,6 +132,10 @@ var loc = g.getLocation();
                 handleAssign(sender, args[1], args[2]);
                 return true;
             }
+            case "stats" -> {
+                handleStats(sender, args);
+                return true;
+            }
             case "dungeon" -> {
                 handleDungeon(sender, args);
                 return true;
@@ -148,7 +152,7 @@ var loc = g.getLocation();
             sender.sendMessage(ChatColor.RED + "Usage: /gd dungeon <register|unregister|list|create|assign|deleteworld|addregion|removeregion|listregions|forceexit>");
             return;
         }
-        String sub = args[1].toLowerCase();
+        String sub = args[1].toLowerCase(Locale.ROOT);
         switch (sub) {
             case "register" -> {
                 if (!hasDungeonAssign(sender)) {
@@ -159,7 +163,7 @@ var loc = g.getLocation();
                     sender.sendMessage(ChatColor.RED + "Usage: /gd dungeon register <id> <rank> <world>");
                     return;
                 }
-                plugin.getTemplateManager().assign(sender, args[2], args[3].toUpperCase(), args[4]);
+                plugin.getTemplateManager().assign(sender, args[2], args[3].toUpperCase(Locale.ROOT), args[4]);
             }
             case "assign" -> {
                 if (!hasDungeonAssign(sender)) {
@@ -181,8 +185,11 @@ var loc = g.getLocation();
                     sender.sendMessage(ChatColor.RED + "Usage: /gd dungeon unregister <id>");
                     return;
                 }
-                plugin.getTemplateManager().unregisterTemplate(args[2]);
-                MessageUtils.send(sender, "template-unregistered", "id", args[2]);
+                if (plugin.getTemplateManager().unregisterTemplate(args[2])) {
+                    MessageUtils.send(sender, "template-unregistered", "id", args[2]);
+                } else {
+                    MessageUtils.send(sender, "template-not-found");
+                }
             }
             case "list" -> listTemplates(sender);
             case "create" -> {
@@ -205,7 +212,11 @@ var loc = g.getLocation();
                     sender.sendMessage(ChatColor.RED + "Usage: /gd dungeon deleteworld <world-name>");
                     return;
                 }
-                String worldName = Worlds.sanitizeWorldName(args[2]);
+                if (!Worlds.isValidWorldName(args[2])) {
+                    MessageUtils.send(sender, "dungeon-invalid-name");
+                    return;
+                }
+                String worldName = Worlds.normalizeWorldName(args[2]);
                 if (Worlds.isVanillaWorld(worldName) || Worlds.isInstanceWorld(worldName)) {
                     sender.sendMessage(ChatColor.RED + "Cannot delete vanilla or live instance worlds.");
                     return;
@@ -243,7 +254,11 @@ var loc = g.getLocation();
                     sender.sendMessage(ChatColor.RED + "Wave must be a number.");
                     return;
                 }
-                String type = args.length >= 5 ? args[4].toUpperCase() : "MOB";
+                if (wave < 1) {
+                    sender.sendMessage(ChatColor.RED + "Wave must be at least 1.");
+                    return;
+                }
+                String type = args.length >= 5 ? args[4].toUpperCase(Locale.ROOT) : "MOB";
                 if (!type.equals("MOB") && !type.equals("ELITE")) {
                     sender.sendMessage(ChatColor.RED + "Type must be MOB or ELITE.");
                     return;
@@ -268,7 +283,10 @@ var loc = g.getLocation();
                     sender.sendMessage(ChatColor.RED + "The selected region must be inside the template's world (" + template.getWorldName() + ").");
                     return;
                 }
-                plugin.getTemplateManager().addRegion(templateId, wave, pos1, pos2, type);
+                if (!plugin.getTemplateManager().addRegion(templateId, wave, pos1, pos2, type)) {
+                    sender.sendMessage(ChatColor.RED + "Could not add the region. Check its world, wave, and type.");
+                    return;
+                }
                 listener.clearSelection(player);
                 sender.sendMessage(ChatColor.GREEN + "Region added to template '" + templateId + "' for wave " + wave + " (" + type + ").");
             }
@@ -283,8 +301,11 @@ var loc = g.getLocation();
                 }
                 String templateId = args[2];
                 String regionId = args[3];
-                plugin.getTemplateManager().removeRegion(templateId, regionId);
-                sender.sendMessage(ChatColor.GREEN + "Region removed.");
+                if (plugin.getTemplateManager().removeRegion(templateId, regionId)) {
+                    sender.sendMessage(ChatColor.GREEN + "Region removed.");
+                } else {
+                    sender.sendMessage(ChatColor.RED + "Template or region not found.");
+                }
             }
             case "listregions" -> {
                 if (!sender.hasPermission("gatedungeon.dungeon.admin")) {
@@ -345,7 +366,11 @@ var loc = g.getLocation();
     }
 
     private void handleCreate(CommandSender sender, String rawName) {
-        String name = Worlds.sanitizeWorldName(rawName);
+        if (!Worlds.isValidWorldName(rawName)) {
+            MessageUtils.send(sender, "dungeon-invalid-name");
+            return;
+        }
+        String name = Worlds.normalizeWorldName(rawName);
         if (name.isEmpty()) {
             MessageUtils.send(sender, "dungeon-invalid-name");
             return;
@@ -375,12 +400,50 @@ var loc = g.getLocation();
     }
 
     private void handleAssign(CommandSender sender, String rawName, String rank) {
-        String name = Worlds.sanitizeWorldName(rawName);
+        if (!Worlds.isValidWorldName(rawName)) {
+            MessageUtils.send(sender, "dungeon-invalid-name");
+            return;
+        }
+        String name = Worlds.normalizeWorldName(rawName);
         if (name.isEmpty()) {
             MessageUtils.send(sender, "dungeon-invalid-name");
             return;
         }
-        plugin.getTemplateManager().assign(sender, name, rank.toUpperCase());
+        plugin.getTemplateManager().assign(sender, name, rank.toUpperCase(Locale.ROOT));
+    }
+
+    private void handleStats(CommandSender sender, String[] args) {
+        if (!sender.hasPermission(Constants.PERMISSION_STATS)) {
+            MessageUtils.send(sender, "no-permission");
+            return;
+        }
+
+        PlayerData data;
+        if (args.length >= 2) {
+            if (!sender.hasPermission(Constants.PERMISSION_STATS_OTHERS)) {
+                MessageUtils.send(sender, "no-permission");
+                return;
+            }
+            data = plugin.getDatabaseManager().findPlayerByName(args[1]).orElse(null);
+            if (data == null) {
+                MessageUtils.send(sender, "stats-not-found", "player", args[1]);
+                return;
+            }
+        } else if (sender instanceof Player player) {
+            data = plugin.getDatabaseManager().loadPlayer(player.getUniqueId());
+            if (data.getName() == null) data.setName(player.getName());
+        } else {
+            sender.sendMessage(ChatColor.RED + "Usage: /gd stats <player>");
+            return;
+        }
+
+        int attempts = data.getTotalCompleted() + data.getTotalFailed();
+        double successRate = attempts == 0 ? 0.0 : data.getTotalCompleted() * 100.0 / attempts;
+        sender.sendMessage(ChatColor.GOLD + "=== Dungeon Stats: " + data.getDisplayName() + " ===");
+        sender.sendMessage(ChatColor.GRAY + "Cleared: " + ChatColor.GREEN + data.getTotalCompleted()
+                + ChatColor.GRAY + " | Failed: " + ChatColor.RED + data.getTotalFailed());
+        sender.sendMessage(ChatColor.GRAY + "Highest rank: " + ChatColor.YELLOW + data.getHighestRank()
+                + ChatColor.GRAY + " | Success: " + ChatColor.AQUA + String.format(Locale.ROOT, "%.1f%%", successRate));
     }
 
     private void listTemplates(CommandSender sender) {
@@ -427,7 +490,8 @@ var loc = g.getLocation();
         sender.sendMessage("§7/gd spawn <rank> §8- Spawn a gate at your feet");
         sender.sendMessage("§7/gd remove <id> §8- Remove a gate");
         sender.sendMessage("§7/gd list §8- List all active gates");
-        sender.sendMessage("§7/gd reload §8- Reload config and database");
+        sender.sendMessage("§7/gd stats [player] §8- View dungeon completion statistics");
+        sender.sendMessage("§7/gd reload §8- Reload configuration");
         sender.sendMessage("§7/gd dungeon list §8- List rank template pools");
         sender.sendMessage("§7/gd dungeon unregister <id> §8- Unregister a template");
         sender.sendMessage("§7/gd dungeon deleteworld <name> §8- Delete a dungeon world (must be unused)");

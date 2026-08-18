@@ -169,11 +169,28 @@ public class DungeonInstance {
         player.sendTitle("§a✦ Dungeon ready", "§eTeleporting...", 0, 30, 10);
         try {
             player.teleportAsync(dest).thenAccept(ok ->
-                    Bukkit.getScheduler().runTask(GateDungeonPlugin.getInstance(), () -> afterTeleport(player, dest)));
+                    Bukkit.getScheduler().runTask(GateDungeonPlugin.getInstance(), () -> {
+                        if (!ok && !player.teleport(dest)) {
+                            handleEntryFailure(player);
+                            return;
+                        }
+                        afterTeleport(player, dest);
+                    }));
         } catch (Throwable ignored) {
-            player.teleport(dest);
-            afterTeleport(player, dest);
+            if (player.teleport(dest)) {
+                afterTeleport(player, dest);
+            } else {
+                handleEntryFailure(player);
+            }
         }
+    }
+
+    private void handleEntryFailure(Player player) {
+        players.remove(player.getUniqueId());
+        gate.removePlayer(player.getUniqueId());
+        GateDungeonPlugin.getInstance().getInstanceManager().removePlayerFromInstance(player.getUniqueId());
+        player.sendMessage("§cCould not teleport you into the dungeon. Please try again.");
+        if (players.isEmpty()) cleanup();
     }
 
     private void afterTeleport(Player player, Location dest) {
@@ -311,18 +328,16 @@ public class DungeonInstance {
         }
 
         List<LivingEntity> waveEntities = new ArrayList<>();
-        int totalRegions = Math.max(1, regions.size());
-        for (RegionMarker region : regions) {
-            for (ConfigManager.MobEntry entry : mobEntries) {
-                int perRegion = Math.max(1, (int) Math.ceil(entry.amount / (double) totalRegions));
-                for (int i = 0; i < perRegion; i++) {
-                    Location spawnLoc = safeSpawn(region.getRandomLocation(world), i);
-                    if (spawnLoc == null) continue;
-                    LivingEntity mob = spawnMob(spawnLoc, entry.type, entry.name, entry.health, entry.damage);
-                    if (mob != null) {
-                        waveEntities.add(mob);
-                        spawnedMobs.computeIfAbsent(region.getId(), k -> new ArrayList<>()).add(mob);
-                    }
+        for (ConfigManager.MobEntry entry : mobEntries) {
+            int amount = Math.max(0, entry.amount);
+            for (int i = 0; i < amount; i++) {
+                RegionMarker region = regions.get(i % regions.size());
+                Location spawnLoc = safeSpawn(region.getRandomLocation(world), i);
+                if (spawnLoc == null) continue;
+                LivingEntity mob = spawnMob(spawnLoc, entry.type, entry.name, entry.health, entry.damage);
+                if (mob != null) {
+                    waveEntities.add(mob);
+                    spawnedMobs.computeIfAbsent(region.getId(), k -> new ArrayList<>()).add(mob);
                 }
             }
         }
@@ -439,7 +454,7 @@ public class DungeonInstance {
 
         Location spawnAt = bossSpawn != null ? bossSpawn : entrance;
         if (spawnAt == null) {
-            complete();
+            abortInstance("No safe boss spawn is configured.");
             return;
         }
 
@@ -448,11 +463,18 @@ public class DungeonInstance {
             bossEntry = new ConfigManager.BossEntry("ZOMBIE", "§cGoblin King", 200, 10, 100);
         }
         lastRewardExp = bossEntry.expReward;
-        LivingEntity boss = spawnBoss(spawnAt, bossEntry);
-        if (boss == null) {
-            complete();
+        LivingEntity spawnedBoss = spawnBoss(spawnAt, bossEntry);
+        if (spawnedBoss == null && !"ZOMBIE".equalsIgnoreCase(bossEntry.type)) {
+            GateDungeonPlugin.getInstance().getLogger().warning(
+                    "Falling back to a ZOMBIE boss for invalid type '" + bossEntry.type + "'.");
+            spawnedBoss = spawnBoss(spawnAt,
+                    new ConfigManager.BossEntry("ZOMBIE", "§cDungeon Guardian", 200, 10, 100));
+        }
+        if (spawnedBoss == null) {
+            abortInstance("The dungeon boss could not be spawned.");
             return;
         }
+        LivingEntity boss = spawnedBoss;
         bossWatchTask = new BukkitRunnable() {
             @Override
             public void run() {
@@ -480,6 +502,19 @@ public class DungeonInstance {
         }
     }
 
+    private void abortInstance(String reason) {
+        GateDungeonPlugin.getInstance().getLogger().severe(
+                "Aborting instance " + id + " (template " + template.getId() + "): " + reason);
+        for (UUID uuid : players) {
+            Player player = Bukkit.getPlayer(uuid);
+            if (player != null && player.isOnline()) {
+                player.sendMessage("§c" + reason + " You have been returned safely.");
+            }
+        }
+        gate.setClosing(true);
+        forceClose();
+    }
+
     private void complete() {
         if (state == State.COMPLETED || state == State.DESTROYED || state == State.CLEANUP) return;
         state = State.COMPLETED;
@@ -495,8 +530,7 @@ public class DungeonInstance {
                 data.setName(p.getName());
                 data.incrementCompleted();
                 data.updateHighestRank(gate.getRank());
-                GateDungeonPlugin.getInstance().getDatabaseManager().savePlayer(data);
-                GateDungeonPlugin.getInstance().getDatabaseManager().addCompletion(uuid, template.getId());
+                GateDungeonPlugin.getInstance().getDatabaseManager().recordCompletion(data, template.getId());
             }
             completed.add(uuid);
         }

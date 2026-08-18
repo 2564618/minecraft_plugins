@@ -7,9 +7,18 @@ import com.maya4pa.gatedungeon.template.Marker;
 import com.maya4pa.gatedungeon.template.RegionMarker;
 import org.bukkit.Location;
 import org.bukkit.World;
+
 import java.io.File;
-import java.sql.*;
-import java.util.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 public class DatabaseManager {
     private final GateDungeonPlugin plugin;
@@ -23,17 +32,18 @@ public class DatabaseManager {
 
     public void initialize() {
         try {
-            if (!plugin.getDataFolder().exists()) plugin.getDataFolder().mkdirs();
+            if (!plugin.getDataFolder().exists() && !plugin.getDataFolder().mkdirs()) {
+                throw new IllegalStateException("Could not create plugin data directory");
+            }
             connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
             try (Statement pragma = connection.createStatement()) {
                 pragma.execute("PRAGMA foreign_keys = ON");
                 pragma.execute("PRAGMA journal_mode = WAL");
             }
             createTables();
-            plugin.getLogger().info("✅ Database initialized at " + dbFile.getAbsolutePath());
+            plugin.getLogger().info("Database initialized at " + dbFile.getAbsolutePath());
         } catch (SQLException e) {
-            plugin.getLogger().severe("❌ Failed to init database: " + e.getMessage());
-            // Fail fast instead of letting every later call NPE on a null connection.
+            plugin.getLogger().severe("Failed to initialize database: " + e.getMessage());
             throw new IllegalStateException("GateDungeon cannot start without its database", e);
         }
     }
@@ -41,90 +51,104 @@ public class DatabaseManager {
     private void createTables() throws SQLException {
         try (Statement stmt = connection.createStatement()) {
             stmt.execute("""
-                CREATE TABLE IF NOT EXISTS gates (
-                    id TEXT PRIMARY KEY,
-                    world TEXT NOT NULL,
-                    x INT NOT NULL,
-                    y INT NOT NULL,
-                    z INT NOT NULL,
-                    rank TEXT NOT NULL,
-                    creator_uuid TEXT NOT NULL,
-                    creation_time LONG NOT NULL,
-                    active INT DEFAULT 1
-                )
-            """);
+                    CREATE TABLE IF NOT EXISTS gates (
+                        id TEXT PRIMARY KEY,
+                        world TEXT NOT NULL,
+                        x INT NOT NULL,
+                        y INT NOT NULL,
+                        z INT NOT NULL,
+                        rank TEXT NOT NULL,
+                        creator_uuid TEXT NOT NULL,
+                        creation_time LONG NOT NULL,
+                        active INT DEFAULT 1
+                    )
+                    """);
             stmt.execute("""
-                CREATE TABLE IF NOT EXISTS templates (
-                    id TEXT PRIMARY KEY,
-                    rank TEXT NOT NULL,
-                    name TEXT NOT NULL,
-                    world_name TEXT NOT NULL,
-                    schematic_file TEXT NOT NULL,
-                    entrance_x INT NOT NULL,
-                    entrance_y INT NOT NULL,
-                    entrance_z INT NOT NULL,
-                    registered_time LONG NOT NULL
-                )
-            """);
+                    CREATE TABLE IF NOT EXISTS templates (
+                        id TEXT PRIMARY KEY,
+                        rank TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        world_name TEXT NOT NULL,
+                        schematic_file TEXT NOT NULL,
+                        entrance_x INT NOT NULL,
+                        entrance_y INT NOT NULL,
+                        entrance_z INT NOT NULL,
+                        registered_time LONG NOT NULL
+                    )
+                    """);
             stmt.execute("""
-                CREATE TABLE IF NOT EXISTS template_markers (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    template_id TEXT NOT NULL,
-                    type TEXT NOT NULL,
-                    x INT NOT NULL,
-                    y INT NOT NULL,
-                    z INT NOT NULL,
-                    metadata TEXT,
-                    FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
-                )
-            """);
+                    CREATE TABLE IF NOT EXISTS template_markers (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        template_id TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        x INT NOT NULL,
+                        y INT NOT NULL,
+                        z INT NOT NULL,
+                        metadata TEXT,
+                        FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
+                    )
+                    """);
             stmt.execute("""
-                CREATE TABLE IF NOT EXISTS template_regions (
-                    id TEXT PRIMARY KEY,
-                    template_id TEXT NOT NULL,
-                    wave INT NOT NULL,
-                    world TEXT NOT NULL,
-                    min_x INT NOT NULL,
-                    min_y INT NOT NULL,
-                    min_z INT NOT NULL,
-                    max_x INT NOT NULL,
-                    max_y INT NOT NULL,
-                    max_z INT NOT NULL,
-                    type TEXT NOT NULL,
-                    FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
-                )
-            """);
+                    CREATE TABLE IF NOT EXISTS template_regions (
+                        id TEXT PRIMARY KEY,
+                        template_id TEXT NOT NULL,
+                        wave INT NOT NULL,
+                        world TEXT NOT NULL,
+                        min_x INT NOT NULL,
+                        min_y INT NOT NULL,
+                        min_z INT NOT NULL,
+                        max_x INT NOT NULL,
+                        max_y INT NOT NULL,
+                        max_z INT NOT NULL,
+                        type TEXT NOT NULL,
+                        FOREIGN KEY (template_id) REFERENCES templates(id) ON DELETE CASCADE
+                    )
+                    """);
             stmt.execute("""
-                CREATE TABLE IF NOT EXISTS players (
-                    uuid TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    total_completed INT DEFAULT 0,
-                    total_failed INT DEFAULT 0,
-                    highest_rank TEXT DEFAULT 'E'
-                )
-            """);
+                    CREATE TABLE IF NOT EXISTS players (
+                        uuid TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        total_completed INT DEFAULT 0,
+                        total_failed INT DEFAULT 0,
+                        highest_rank TEXT DEFAULT 'E'
+                    )
+                    """);
             stmt.execute("""
-                CREATE TABLE IF NOT EXISTS completions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    player_uuid TEXT NOT NULL,
-                    template_id TEXT NOT NULL,
-                    completion_time LONG NOT NULL,
-                    FOREIGN KEY (player_uuid) REFERENCES players(uuid)
-                )
-            """);
+                    CREATE TABLE IF NOT EXISTS completions (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        player_uuid TEXT NOT NULL,
+                        template_id TEXT NOT NULL,
+                        completion_time LONG NOT NULL,
+                        FOREIGN KEY (player_uuid) REFERENCES players(uuid)
+                    )
+                    """);
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_players_name ON players(name COLLATE NOCASE)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_completions_player ON completions(player_uuid)");
         }
-        plugin.getLogger().info("✅ Tables created/verified.");
     }
 
     // ----- GATE OPERATIONS -----
+
     public void saveGate(Gate gate) {
-        String sql = "INSERT OR REPLACE INTO gates (id, world, x, y, z, rank, creator_uuid, creation_time, active) VALUES (?,?,?,?,?,?,?,?,?)";
+        String sql = """
+                INSERT INTO gates (id, world, x, y, z, rank, creator_uuid, creation_time, active)
+                VALUES (?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET
+                    world = excluded.world,
+                    x = excluded.x,
+                    y = excluded.y,
+                    z = excluded.z,
+                    rank = excluded.rank,
+                    creator_uuid = excluded.creator_uuid,
+                    creation_time = excluded.creation_time,
+                    active = excluded.active
+                """;
+        Location loc = gate.getLocation();
+        if (loc.getWorld() == null) {
+            plugin.getLogger().warning("Cannot save gate " + gate.getId() + ": world is unloaded");
+            return;
+        }
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
-Location loc = gate.getLocation();
-            if (loc.getWorld() == null) {
-                plugin.getLogger().warning("Cannot save gate " + gate.getId() + ": world unloaded");
-                return;
-            }
             ps.setString(1, gate.getId());
             ps.setString(2, loc.getWorld().getName());
             ps.setInt(3, loc.getBlockX());
@@ -135,9 +159,8 @@ Location loc = gate.getLocation();
             ps.setLong(8, gate.getCreationTime());
             ps.setInt(9, gate.isActive() ? 1 : 0);
             ps.executeUpdate();
-            plugin.getLogger().info("✅ Saved gate: " + gate.getId());
         } catch (SQLException e) {
-            plugin.getLogger().warning("❌ Failed to save gate: " + e.getMessage());
+            plugin.getLogger().warning("Failed to save gate " + gate.getId() + ": " + e.getMessage());
         }
     }
 
@@ -145,208 +168,226 @@ Location loc = gate.getLocation();
         try (PreparedStatement ps = connection.prepareStatement("DELETE FROM gates WHERE id = ?")) {
             ps.setString(1, id);
             ps.executeUpdate();
-            plugin.getLogger().info("✅ Deleted gate: " + id);
         } catch (SQLException e) {
-            plugin.getLogger().warning("❌ Failed to delete gate: " + e.getMessage());
+            plugin.getLogger().warning("Failed to delete gate " + id + ": " + e.getMessage());
         }
     }
 
     public List<Gate> loadAllGates() {
         List<Gate> gates = new ArrayList<>();
         String sql = "SELECT * FROM gates WHERE active = 1";
-        try (Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
             while (rs.next()) {
                 String id = rs.getString("id");
                 String worldName = rs.getString("world");
-                int x = rs.getInt("x");
-                int y = rs.getInt("y");
-                int z = rs.getInt("z");
-                String rank = rs.getString("rank");
                 UUID creator;
                 try {
                     creator = UUID.fromString(rs.getString("creator_uuid"));
                 } catch (IllegalArgumentException e) {
-                    plugin.getLogger().warning("Skipping gate " + id
-                            + " with malformed creator_uuid '" + rs.getString("creator_uuid") + "'");
+                    plugin.getLogger().warning("Skipping gate " + id + " with malformed creator UUID");
                     continue;
                 }
-                long time = rs.getLong("creation_time");
 
                 World world = plugin.getServer().getWorld(worldName);
-                if (world != null) {
-                    Location loc = new Location(world, x, y, z);
-                    Gate gate = new Gate(id, loc, rank, creator, time);
-                    gates.add(gate);
+                if (world == null) {
+                    plugin.getLogger().warning("Skipping gate " + id + ": world '" + worldName + "' is not loaded");
+                    continue;
                 }
+                Location loc = new Location(world,
+                        rs.getInt("x") + 0.5,
+                        rs.getInt("y"),
+                        rs.getInt("z") + 0.5);
+                gates.add(new Gate(id, loc, rs.getString("rank"), creator, rs.getLong("creation_time")));
             }
-            plugin.getLogger().info("✅ Loaded " + gates.size() + " gates.");
         } catch (SQLException e) {
-            plugin.getLogger().warning("❌ Failed to load gates: " + e.getMessage());
+            plugin.getLogger().warning("Failed to load gates: " + e.getMessage());
         }
         return gates;
     }
 
     // ----- TEMPLATE OPERATIONS -----
+
     public void saveTemplate(DungeonTemplate template) {
-        plugin.getLogger().info("💾 Saving template: " + template.getId());
+        Location entrance = template.getEntrance();
+        if (entrance == null) {
+            plugin.getLogger().warning("Cannot save template " + template.getId() + ": entrance is missing");
+            return;
+        }
+
+        boolean previousAutoCommit = true;
         try {
-            // Save template
-            String sql = "INSERT OR REPLACE INTO templates (id, rank, name, world_name, schematic_file, entrance_x, entrance_y, entrance_z, registered_time) VALUES (?,?,?,?,?,?,?,?,?)";
-            try (PreparedStatement ps = connection.prepareStatement(sql)) {
-                ps.setString(1, template.getId());
-                ps.setString(2, template.getRank());
-                ps.setString(3, template.getName());
-                ps.setString(4, template.getWorldName());
-                ps.setString(5, template.getSchematicFile());
-                Location ent = template.getEntrance();
-                ps.setInt(6, ent.getBlockX());
-                ps.setInt(7, ent.getBlockY());
-                ps.setInt(8, ent.getBlockZ());
-                ps.setLong(9, template.getRegisteredTime());
-                ps.executeUpdate();
-            }
-
-            // Delete old markers
-            try (PreparedStatement del = connection.prepareStatement("DELETE FROM template_markers WHERE template_id = ?")) {
-                del.setString(1, template.getId());
-                del.executeUpdate();
-            }
-
-            // Insert new markers
-            String markerSql = "INSERT INTO template_markers (template_id, type, x, y, z, metadata) VALUES (?,?,?,?,?,?)";
-            try (PreparedStatement ps = connection.prepareStatement(markerSql)) {
-                for (var marker : template.getMarkers()) {
-                    ps.setString(1, template.getId());
-                    ps.setString(2, marker.getType());
-                    ps.setInt(3, marker.getLocation().getBlockX());
-                    ps.setInt(4, marker.getLocation().getBlockY());
-                    ps.setInt(5, marker.getLocation().getBlockZ());
-                    ps.setString(6, marker.getMetadata());
-                    ps.addBatch();
-                }
-                ps.executeBatch();
-                plugin.getLogger().info("✅ Saved " + template.getMarkers().size() + " markers.");
-            }
-
-            // Save regions
-            saveRegions(template);
-
-            plugin.getLogger().info("✅ Saved template: " + template.getId());
+            previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            upsertTemplate(template, entrance);
+            replaceMarkers(template);
+            replaceRegions(template);
+            connection.commit();
         } catch (SQLException e) {
-            plugin.getLogger().warning("❌ Failed to save template: " + e.getMessage());
+            rollbackQuietly();
+            plugin.getLogger().warning("Failed to save template " + template.getId() + ": " + e.getMessage());
+        } finally {
+            restoreAutoCommit(previousAutoCommit);
+        }
+    }
+
+    private void upsertTemplate(DungeonTemplate template, Location entrance) throws SQLException {
+        String sql = """
+                INSERT INTO templates
+                    (id, rank, name, world_name, schematic_file, entrance_x, entrance_y, entrance_z, registered_time)
+                VALUES (?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(id) DO UPDATE SET
+                    rank = excluded.rank,
+                    name = excluded.name,
+                    world_name = excluded.world_name,
+                    schematic_file = excluded.schematic_file,
+                    entrance_x = excluded.entrance_x,
+                    entrance_y = excluded.entrance_y,
+                    entrance_z = excluded.entrance_z,
+                    registered_time = excluded.registered_time
+                """;
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, template.getId());
+            ps.setString(2, template.getRank());
+            ps.setString(3, template.getName());
+            ps.setString(4, template.getWorldName());
+            ps.setString(5, template.getSchematicFile());
+            ps.setInt(6, entrance.getBlockX());
+            ps.setInt(7, entrance.getBlockY());
+            ps.setInt(8, entrance.getBlockZ());
+            ps.setLong(9, template.getRegisteredTime());
+            ps.executeUpdate();
+        }
+    }
+
+    private void replaceMarkers(DungeonTemplate template) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "DELETE FROM template_markers WHERE template_id = ?")) {
+            ps.setString(1, template.getId());
+            ps.executeUpdate();
+        }
+
+        String sql = "INSERT INTO template_markers (template_id, type, x, y, z, metadata) VALUES (?,?,?,?,?,?)";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            for (Marker marker : template.getMarkers()) {
+                Location location = marker.getLocation();
+                ps.setString(1, template.getId());
+                ps.setString(2, marker.getType());
+                ps.setInt(3, location.getBlockX());
+                ps.setInt(4, location.getBlockY());
+                ps.setInt(5, location.getBlockZ());
+                ps.setString(6, marker.getMetadata());
+                ps.addBatch();
+            }
+            ps.executeBatch();
         }
     }
 
     public void saveRegions(DungeonTemplate template) {
-        plugin.getLogger().info("💾 Saving regions for template: " + template.getId());
+        boolean previousAutoCommit = true;
         try {
-            // Delete old regions
-            String deleteSql = "DELETE FROM template_regions WHERE template_id = ?";
-            try (PreparedStatement ps = connection.prepareStatement(deleteSql)) {
-                ps.setString(1, template.getId());
-                ps.executeUpdate();
-            }
-
-            // Insert new regions
-            String insertSql = "INSERT INTO template_regions (id, template_id, wave, world, min_x, min_y, min_z, max_x, max_y, max_z, type) VALUES (?,?,?,?,?,?,?,?,?,?,?)";
-            try (PreparedStatement ps = connection.prepareStatement(insertSql)) {
-                for (RegionMarker r : template.getRegions()) {
-                    ps.setString(1, r.getId());
-                    ps.setString(2, template.getId());
-                    ps.setInt(3, r.getWave());
-                    ps.setString(4, r.getWorldName());
-                    ps.setInt(5, r.getMinX());
-                    ps.setInt(6, r.getMinY());
-                    ps.setInt(7, r.getMinZ());
-                    ps.setInt(8, r.getMaxX());
-                    ps.setInt(9, r.getMaxY());
-                    ps.setInt(10, r.getMaxZ());
-                    ps.setString(11, r.getType());
-                    ps.addBatch();
-                }
-                ps.executeBatch();
-                plugin.getLogger().info("✅ Saved " + template.getRegions().size() + " regions.");
-            }
+            previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            replaceRegions(template);
+            connection.commit();
         } catch (SQLException e) {
-            plugin.getLogger().warning("❌ Failed to save regions: " + e.getMessage());
+            rollbackQuietly();
+            plugin.getLogger().warning("Failed to save regions for " + template.getId() + ": " + e.getMessage());
+        } finally {
+            restoreAutoCommit(previousAutoCommit);
         }
     }
 
-public void deleteTemplate(String id) {
-        try {
-            try (PreparedStatement ps = connection.prepareStatement("DELETE FROM template_markers WHERE template_id = ?")) {
-                ps.setString(1, id);
-                ps.executeUpdate();
+    private void replaceRegions(DungeonTemplate template) throws SQLException {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "DELETE FROM template_regions WHERE template_id = ?")) {
+            ps.setString(1, template.getId());
+            ps.executeUpdate();
+        }
+
+        String sql = """
+                INSERT INTO template_regions
+                    (id, template_id, wave, world, min_x, min_y, min_z, max_x, max_y, max_z, type)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                """;
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            for (RegionMarker region : template.getRegions()) {
+                ps.setString(1, region.getId());
+                ps.setString(2, template.getId());
+                ps.setInt(3, region.getWave());
+                ps.setString(4, region.getWorldName());
+                ps.setInt(5, region.getMinX());
+                ps.setInt(6, region.getMinY());
+                ps.setInt(7, region.getMinZ());
+                ps.setInt(8, region.getMaxX());
+                ps.setInt(9, region.getMaxY());
+                ps.setInt(10, region.getMaxZ());
+                ps.setString(11, region.getType());
+                ps.addBatch();
             }
-            try (PreparedStatement ps = connection.prepareStatement("DELETE FROM template_regions WHERE template_id = ?")) {
-                ps.setString(1, id);
-                ps.executeUpdate();
-            }
-            try (PreparedStatement ps = connection.prepareStatement("DELETE FROM templates WHERE id = ?")) {
-                ps.setString(1, id);
-                ps.executeUpdate();
-            }
-            plugin.getLogger().info("✅ Deleted template: " + id);
+            ps.executeBatch();
+        }
+    }
+
+    public boolean deleteTemplate(String id) {
+        try (PreparedStatement ps = connection.prepareStatement("DELETE FROM templates WHERE id = ?")) {
+            ps.setString(1, id);
+            return ps.executeUpdate() > 0;
         } catch (SQLException e) {
-            plugin.getLogger().warning("❌ Failed to delete template: " + e.getMessage());
+            plugin.getLogger().warning("Failed to delete template " + id + ": " + e.getMessage());
+            return false;
         }
     }
 
     public List<DungeonTemplate> loadAllTemplates() {
         List<DungeonTemplate> templates = new ArrayList<>();
-        String sql = "SELECT * FROM templates";
-        try (Statement stmt = connection.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT * FROM templates")) {
             while (rs.next()) {
                 String id = rs.getString("id");
-                String rank = rs.getString("rank");
-                String name = rs.getString("name");
                 String worldName = rs.getString("world_name");
-                String schematic = rs.getString("schematic_file");
-                int ex = rs.getInt("entrance_x");
-                int ey = rs.getInt("entrance_y");
-                int ez = rs.getInt("entrance_z");
-                long time = rs.getLong("registered_time");
-
-                World world = plugin.getServer().getWorld(worldName);
+                World world = plugin.getWorldManager().getOrLoadWorld(worldName);
                 if (world == null) {
-                    world = plugin.getWorldManager().createVoidWorld(worldName);
-                    if (world == null) continue;
+                    plugin.getLogger().warning("Skipping template " + id + ": world folder '" + worldName + "' is missing");
+                    continue;
                 }
-                Location entrance = new Location(world, ex, ey, ez);
-                DungeonTemplate template = new DungeonTemplate(id, rank, name, worldName, schematic, entrance, time);
-                loadMarkers(template);
+
+                Location entrance = new Location(world,
+                        rs.getInt("entrance_x") + 0.5,
+                        rs.getInt("entrance_y"),
+                        rs.getInt("entrance_z") + 0.5);
+                DungeonTemplate template = new DungeonTemplate(
+                        id,
+                        rs.getString("rank"),
+                        rs.getString("name"),
+                        worldName,
+                        rs.getString("schematic_file"),
+                        entrance,
+                        rs.getLong("registered_time"));
+                loadMarkers(template, world);
                 loadRegions(template);
                 templates.add(template);
             }
-            plugin.getLogger().info("✅ Loaded " + templates.size() + " templates.");
         } catch (SQLException e) {
-            plugin.getLogger().warning("❌ Failed to load templates: " + e.getMessage());
+            plugin.getLogger().warning("Failed to load templates: " + e.getMessage());
         }
         return templates;
     }
 
-    private void loadMarkers(DungeonTemplate template) {
+    private void loadMarkers(DungeonTemplate template, World world) {
         String sql = "SELECT * FROM template_markers WHERE template_id = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, template.getId());
             try (ResultSet rs = ps.executeQuery()) {
-            World world = plugin.getServer().getWorld(template.getWorldName());
-            if (world == null) return;
-            while (rs.next()) {
-                String type = rs.getString("type");
-                int x = rs.getInt("x");
-                int y = rs.getInt("y");
-                int z = rs.getInt("z");
-                String meta = rs.getString("metadata");
-                Location loc = new Location(world, x, y, z);
-                template.addMarker(new Marker(type, loc, meta));
-            }
-            plugin.getLogger().info("✅ Loaded " + template.getMarkers().size() + " markers for " + template.getId());
+                while (rs.next()) {
+                    Location location = new Location(world,
+                            rs.getInt("x") + 0.5,
+                            rs.getInt("y"),
+                            rs.getInt("z") + 0.5);
+                    template.addMarker(new Marker(
+                            rs.getString("type"), location, rs.getString("metadata")));
+                }
             }
         } catch (SQLException e) {
-            plugin.getLogger().warning("❌ Failed to load markers for " + template.getId() + ": " + e.getMessage());
+            plugin.getLogger().warning("Failed to load markers for " + template.getId() + ": " + e.getMessage());
         }
     }
 
@@ -355,82 +396,144 @@ public void deleteTemplate(String id) {
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, template.getId());
             try (ResultSet rs = ps.executeQuery()) {
-            int count = 0;
-            while (rs.next()) {
-                String id = rs.getString("id");
-                int wave = rs.getInt("wave");
-                String worldName = rs.getString("world");
-                int minX = rs.getInt("min_x");
-                int minY = rs.getInt("min_y");
-                int minZ = rs.getInt("min_z");
-                int maxX = rs.getInt("max_x");
-                int maxY = rs.getInt("max_y");
-                int maxZ = rs.getInt("max_z");
-                String type = rs.getString("type");
-                RegionMarker region = new RegionMarker(id, wave, worldName, minX, minY, minZ, maxX, maxY, maxZ, type);
-                template.addRegion(region);
-                count++;
-            }
-            plugin.getLogger().info("✅ Loaded " + count + " regions for " + template.getId());
+                while (rs.next()) {
+                    template.addRegion(new RegionMarker(
+                            rs.getString("id"),
+                            rs.getInt("wave"),
+                            rs.getString("world"),
+                            rs.getInt("min_x"),
+                            rs.getInt("min_y"),
+                            rs.getInt("min_z"),
+                            rs.getInt("max_x"),
+                            rs.getInt("max_y"),
+                            rs.getInt("max_z"),
+                            rs.getString("type")));
+                }
             }
         } catch (SQLException e) {
-            plugin.getLogger().warning("❌ Failed to load regions for " + template.getId() + ": " + e.getMessage());
+            plugin.getLogger().warning("Failed to load regions for " + template.getId() + ": " + e.getMessage());
         }
     }
 
     // ----- PLAYER OPERATIONS -----
+
     public PlayerData loadPlayer(UUID uuid) {
         String sql = "SELECT * FROM players WHERE uuid = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    PlayerData data = new PlayerData(uuid);
-                    data.setName(rs.getString("name"));
-                    data.setTotalCompleted(rs.getInt("total_completed"));
-                    data.setTotalFailed(rs.getInt("total_failed"));
-                    data.setHighestRank(rs.getString("highest_rank"));
-                    return data;
+                    return readPlayer(rs);
                 }
             }
         } catch (SQLException e) {
-            plugin.getLogger().warning("❌ Failed to load player: " + e.getMessage());
+            plugin.getLogger().warning("Failed to load player " + uuid + ": " + e.getMessage());
         }
         return new PlayerData(uuid);
     }
 
-    public void savePlayer(PlayerData data) {
-        String sql = "INSERT OR REPLACE INTO players (uuid, name, total_completed, total_failed, highest_rank) VALUES (?,?,?,?,?)";
+    public Optional<PlayerData> findPlayerByName(String name) {
+        String sql = "SELECT * FROM players WHERE name = ? COLLATE NOCASE LIMIT 1";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
-ps.setString(1, data.getUuid().toString());
+            ps.setString(1, name);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return Optional.of(readPlayer(rs));
+                }
+            }
+        } catch (SQLException | IllegalArgumentException e) {
+            plugin.getLogger().warning("Failed to find player '" + name + "': " + e.getMessage());
+        }
+        return Optional.empty();
+    }
+
+    private PlayerData readPlayer(ResultSet rs) throws SQLException {
+        PlayerData data = new PlayerData(UUID.fromString(rs.getString("uuid")));
+        data.setName(rs.getString("name"));
+        data.setTotalCompleted(rs.getInt("total_completed"));
+        data.setTotalFailed(rs.getInt("total_failed"));
+        data.setHighestRank(rs.getString("highest_rank"));
+        return data;
+    }
+
+    public void savePlayer(PlayerData data) {
+        try {
+            upsertPlayer(data);
+        } catch (SQLException e) {
+            plugin.getLogger().warning("Failed to save player " + data.getUuid() + ": " + e.getMessage());
+        }
+    }
+
+    private void upsertPlayer(PlayerData data) throws SQLException {
+        String sql = """
+                INSERT INTO players (uuid, name, total_completed, total_failed, highest_rank)
+                VALUES (?,?,?,?,?)
+                ON CONFLICT(uuid) DO UPDATE SET
+                    name = excluded.name,
+                    total_completed = excluded.total_completed,
+                    total_failed = excluded.total_failed,
+                    highest_rank = excluded.highest_rank
+                """;
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setString(1, data.getUuid().toString());
             ps.setString(2, data.getName() != null ? data.getName() : "Unknown");
             ps.setInt(3, data.getTotalCompleted());
             ps.setInt(4, data.getTotalFailed());
             ps.setString(5, data.getHighestRank());
             ps.executeUpdate();
-        } catch (SQLException e) {
-            plugin.getLogger().warning("❌ Failed to save player: " + e.getMessage());
         }
     }
 
-    public void addCompletion(UUID playerUuid, String templateId) {
+    /** Saves updated totals and the completion history as one atomic operation. */
+    public void recordCompletion(PlayerData data, String templateId) {
+        boolean previousAutoCommit = true;
+        try {
+            previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            upsertPlayer(data);
+            insertCompletion(data.getUuid(), templateId);
+            connection.commit();
+        } catch (SQLException e) {
+            rollbackQuietly();
+            plugin.getLogger().warning("Failed to record completion for " + data.getUuid() + ": " + e.getMessage());
+        } finally {
+            restoreAutoCommit(previousAutoCommit);
+        }
+    }
+
+    private void insertCompletion(UUID playerUuid, String templateId) throws SQLException {
         String sql = "INSERT INTO completions (player_uuid, template_id, completion_time) VALUES (?,?,?)";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, playerUuid.toString());
             ps.setString(2, templateId);
             ps.setLong(3, System.currentTimeMillis());
             ps.executeUpdate();
+        }
+    }
+
+    private void rollbackQuietly() {
+        try {
+            connection.rollback();
+        } catch (SQLException rollbackError) {
+            plugin.getLogger().warning("Failed to roll back database transaction: " + rollbackError.getMessage());
+        }
+    }
+
+    private void restoreAutoCommit(boolean autoCommit) {
+        try {
+            connection.setAutoCommit(autoCommit);
         } catch (SQLException e) {
-            plugin.getLogger().warning("❌ Failed to add completion: " + e.getMessage());
+            plugin.getLogger().warning("Failed to restore database auto-commit: " + e.getMessage());
         }
     }
 
     public void close() {
         try {
-            if (connection != null && !connection.isClosed()) connection.close();
-            plugin.getLogger().info("✅ Database connection closed.");
+            if (connection != null && !connection.isClosed()) {
+                connection.close();
+            }
         } catch (SQLException e) {
-            plugin.getLogger().warning("❌ Error closing DB: " + e.getMessage());
+            plugin.getLogger().warning("Error closing database: " + e.getMessage());
         }
     }
 }

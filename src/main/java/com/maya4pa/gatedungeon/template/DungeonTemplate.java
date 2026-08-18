@@ -65,8 +65,8 @@ public class DungeonTemplate {
         regions.add(region);
     }
 
-    public void removeRegion(String regionId) {
-        regions.removeIf(r -> r.getId().equals(regionId));
+    public boolean removeRegion(String regionId) {
+        return regions.removeIf(r -> r.getId().equals(regionId));
     }
 
     public List<RegionMarker> getRegions() {

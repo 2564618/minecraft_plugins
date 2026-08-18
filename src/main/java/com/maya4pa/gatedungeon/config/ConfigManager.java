@@ -28,6 +28,29 @@ public class ConfigManager {
             plugin.saveResource("mobs.yml", false);
         }
         mobsConfig = YamlConfiguration.loadConfiguration(mobsFile);
+        validateConfiguration();
+    }
+
+    private void validateConfiguration() {
+        if (getRanks().isEmpty()) {
+            plugin.getLogger().warning("Configuration has no dungeon ranks; no gates can be created.");
+        }
+        if (config.getInt("gate.max-players-per-gate", 1) < 1) {
+            plugin.getLogger().warning("gate.max-players-per-gate must be at least 1; using 1.");
+        }
+        int scanRadius = config.getInt("markers.scan-radius", 50);
+        if (scanRadius < 1 || scanRadius > 128) {
+            plugin.getLogger().warning("markers.scan-radius must be between 1 and 128; the value was clamped.");
+        }
+
+        List<Material> materials = List.of(
+                getMarkerMaterial("entrance"),
+                getMarkerMaterial("boss-spawn"),
+                getMarkerMaterial("exit"),
+                getMarkerMaterial("loot"));
+        if (materials.stream().distinct().count() != materials.size()) {
+            plugin.getLogger().warning("Marker materials must be unique; duplicate marker types will be ignored.");
+        }
     }
 
     public boolean isDebug() { return config.getBoolean("debug", false); }
@@ -41,14 +64,14 @@ public class ConfigManager {
         return false;
     }
 
-    public int getGateExpirationMinutes() { return config.getInt("gate.expiration-minutes", -1); }
-    public int getMinDistanceBetweenGates() { return config.getInt("gate.min-distance-between-gates", 50); }
-    public int getMaxPlayersPerGate() { return config.getInt("gate.max-players-per-gate", 1); }
-    public int getAutoRemoveTimer() { return config.getInt("gate.auto-remove-timer", 300); }
-    public int getBossDefeatRemovalDelay() { return config.getInt("gate.boss-defeat-removal-delay", 60); }
+    public int getGateExpirationMinutes() { return Math.max(-1, config.getInt("gate.expiration-minutes", -1)); }
+    public int getMinDistanceBetweenGates() { return Math.max(0, config.getInt("gate.min-distance-between-gates", 50)); }
+    public int getMaxPlayersPerGate() { return Math.max(1, config.getInt("gate.max-players-per-gate", 1)); }
+    public int getAutoRemoveTimer() { return Math.max(0, config.getInt("gate.auto-remove-timer", 300)); }
+    public int getBossDefeatRemovalDelay() { return Math.max(0, config.getInt("gate.boss-defeat-removal-delay", 60)); }
 
-    public int getMaxActiveInstances() { return config.getInt("instance.max-active-instances", 50); }
-    public int getCleanupInterval() { return config.getInt("instance.cleanup-interval", 30); }
+    public int getMaxActiveInstances() { return Math.max(1, config.getInt("instance.max-active-instances", 50)); }
+    public int getCleanupInterval() { return Math.max(10, config.getInt("instance.cleanup-interval", 30)); }
     public int getPrepSeconds() { return Math.max(0, config.getInt("instance.prep-seconds", 30)); }
     public int getChunkLoadRadius() { return Math.max(1, config.getInt("instance.chunk-load-radius", 3)); }
     public int getSettleTicks() { return Math.max(1, config.getInt("instance.settle-ticks", 20)); }
@@ -57,20 +80,30 @@ public class ConfigManager {
     public String getRankColor(String rank) { return config.getString("visuals.rank-colors." + rank, "&7"); }
 
     public Material getMarkerMaterial(String type) {
-        String path = "markers." + type.toLowerCase(Locale.ROOT).replace('_', '-');
-        String matName = config.getString(path, "GOLD_BLOCK");
-        try {
-            return Material.valueOf(matName.toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException e) {
-            return Material.GOLD_BLOCK;
-        }
+        String normalizedType = type.toLowerCase(Locale.ROOT).replace('_', '-');
+        Material fallback = switch (normalizedType) {
+            case "boss-spawn" -> Material.DIAMOND_BLOCK;
+            case "exit" -> Material.EMERALD_BLOCK;
+            case "loot" -> Material.CHEST;
+            default -> Material.GOLD_BLOCK;
+        };
+        String matName = config.getString("markers." + normalizedType, fallback.name());
+        if (matName == null) return fallback;
+        Material material = Material.matchMaterial(matName.toUpperCase(Locale.ROOT));
+        return material != null ? material : fallback;
+    }
+
+    public Material getWaveTool() {
+        String materialName = config.getString("wave-tool", "STICK");
+        Material material = materialName == null ? null : Material.matchMaterial(materialName.toUpperCase(Locale.ROOT));
+        return material != null ? material : Material.STICK;
     }
 
     public double getTeleportOffsetY() { return config.getDouble("markers.teleport-offset-y", 1.0); }
-    public int getMarkerScanRadius() { return config.getInt("markers.scan-radius", 50); }
+    public int getMarkerScanRadius() { return Math.clamp(config.getInt("markers.scan-radius", 50), 1, 128); }
 
-    public double getExitRadius() { return config.getDouble("exit.area-radius", 5); }
-    public int getExitTeleportDelay() { return config.getInt("exit.teleport-delay-seconds", 5); }
+    public double getExitRadius() { return Math.max(0.5, config.getDouble("exit.area-radius", 5)); }
+    public int getExitTeleportDelay() { return Math.max(0, config.getInt("exit.teleport-delay-seconds", 5)); }
     public boolean isExitParticle() { return config.getBoolean("exit.particle-effect", true); }
     public boolean isExitSound() { return config.getBoolean("exit.sound-effect", true); }
 

@@ -42,6 +42,7 @@ public class WorldManager {
     }
 
     public World getOrLoadWorld(String name) {
+        if (!Worlds.isSafeWorldReference(name)) return null;
         World existing = getWorld(name);
         if (existing != null) return existing;
         File folder = new File(Bukkit.getWorldContainer(), name);
@@ -59,6 +60,10 @@ public class WorldManager {
      * Existing folders are loaded without overwriting blocks.
      */
     public World createVoidWorld(String name, boolean builder) {
+        if (!Worlds.isSafeWorldReference(name)) {
+            plugin.getLogger().warning("Rejected unsafe world name: " + name);
+            return null;
+        }
         World existing = Bukkit.getWorld(name);
         if (existing != null) {
             loadedWorlds.put(name, existing);
@@ -171,6 +176,7 @@ public class WorldManager {
     }
 
     public boolean deleteBuilderWorld(String worldName) {
+        if (!Worlds.isSafeWorldReference(worldName) || Worlds.isReservedWorldName(worldName)) return false;
         World world = getWorld(worldName);
         File folder = world != null ? world.getWorldFolder() : new File(Bukkit.getWorldContainer(), worldName);
         if (world != null) {
