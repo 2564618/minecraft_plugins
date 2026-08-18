@@ -43,10 +43,10 @@ permissions:
     description: Unregister a template
     default: op
   gatedungeon.dungeon.create:
-    description: Create a named dungeon builder world
+    description: Create a named dungeon template world
     default: op
   gatedungeon.dungeon.assign:
-    description: Assign a dungeon world to a rank template pool
+    description: Assign a dungeon template to one or more rank pools
     default: op
   gatedungeon.reload:
     description: Reload configuration

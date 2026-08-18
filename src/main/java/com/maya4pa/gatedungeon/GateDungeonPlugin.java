@@ -9,6 +9,7 @@ import com.maya4pa.gatedungeon.hologram.HologramManager;
 import com.maya4pa.gatedungeon.instance.InstanceManager;
 import com.maya4pa.gatedungeon.listener.GateInteractionListener;
 import com.maya4pa.gatedungeon.listener.RegionSelectionListener;
+import com.maya4pa.gatedungeon.template.RegionVisualizer;
 import com.maya4pa.gatedungeon.template.TemplateManager;
 import com.maya4pa.gatedungeon.util.MessageUtils;
 import com.maya4pa.gatedungeon.world.WorldManager;
@@ -25,6 +26,7 @@ public final class GateDungeonPlugin extends JavaPlugin {
     private InstanceManager instanceManager;
     private HologramManager hologramManager;
     private RegionSelectionListener regionSelectionListener;
+    private RegionVisualizer regionVisualizer;
 
     @Override
     public void onEnable() {
@@ -66,6 +68,9 @@ public final class GateDungeonPlugin extends JavaPlugin {
         regionSelectionListener = new RegionSelectionListener(this);
         getServer().getPluginManager().registerEvents(regionSelectionListener, this);
 
+        regionVisualizer = new RegionVisualizer(this);
+        regionVisualizer.start();
+
         instanceManager.startCleanupTask();
 
         getLogger().info("GateDungeon v" + getDescription().getVersion() + " enabled.");
@@ -73,6 +78,9 @@ public final class GateDungeonPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (regionVisualizer != null) {
+            regionVisualizer.stop();
+        }
         if (instanceManager != null) {
             instanceManager.cleanupAll();
         }
@@ -97,4 +105,5 @@ public final class GateDungeonPlugin extends JavaPlugin {
     public InstanceManager getInstanceManager() { return instanceManager; }
     public HologramManager getHologramManager() { return hologramManager; }
     public RegionSelectionListener getRegionSelectionListener() { return regionSelectionListener; }
+    public RegionVisualizer getRegionVisualizer() { return regionVisualizer; }
 }

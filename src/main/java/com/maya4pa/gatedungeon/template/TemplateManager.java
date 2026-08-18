@@ -2,6 +2,8 @@ package com.maya4pa.gatedungeon.template;
 
 import com.maya4pa.gatedungeon.GateDungeonPlugin;
 import com.maya4pa.gatedungeon.util.MessageUtils;
+import com.maya4pa.gatedungeon.util.Ranks;
+import com.maya4pa.gatedungeon.util.RegionTypes;
 import com.maya4pa.gatedungeon.util.Worlds;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
@@ -32,18 +34,22 @@ public class TemplateManager {
     private void rebuildRankIndex() {
         rankTemplates.clear();
         for (String rank : plugin.getConfigManager().getRanks()) {
-            rankTemplates.put(rank.toUpperCase(), new ArrayList<>());
+            rankTemplates.put(rank.toUpperCase(Locale.ROOT), new ArrayList<>());
         }
-        for (DungeonTemplate t : templates.values()) {
-            rankTemplates.computeIfAbsent(t.getRank().toUpperCase(), k -> new ArrayList<>()).add(t.getId());
+        for (DungeonTemplate template : templates.values()) {
+            for (String rank : template.getRanks()) {
+                if (rank.isBlank()) continue;
+                rankTemplates.computeIfAbsent(rank.toUpperCase(Locale.ROOT), key -> new ArrayList<>())
+                        .add(template.getId());
+            }
         }
     }
 
     public void loadFromDatabase() {
         templates.clear();
         List<DungeonTemplate> loaded = plugin.getDatabaseManager().loadAllTemplates();
-        for (DungeonTemplate t : loaded) {
-            templates.put(t.getId(), t);
+        for (DungeonTemplate template : loaded) {
+            templates.put(template.getId(), template);
         }
         rebuildRankIndex();
         plugin.getLogger().info("Loaded " + loaded.size() + " templates.");
@@ -55,13 +61,13 @@ public class TemplateManager {
     }
 
     public boolean unregisterTemplate(String id) {
-        DungeonTemplate t = getTemplate(id);
-        if (t == null) return false;
+        DungeonTemplate template = getTemplate(id);
+        if (template == null) return false;
 
-        if (!plugin.getDatabaseManager().deleteTemplate(t.getId())) return false;
-        templates.remove(t.getId());
-        if (t.getSchematicFile().matches("[a-zA-Z0-9_.-]+")) {
-            File schem = new File(plugin.getDataFolder(), "schematics/" + t.getSchematicFile());
+        if (!plugin.getDatabaseManager().deleteTemplate(template.getId())) return false;
+        templates.remove(template.getId());
+        if (template.getSchematicFile().matches("[a-zA-Z0-9_.-]+")) {
+            File schem = new File(plugin.getDataFolder(), "schematics/" + template.getSchematicFile());
             if (schem.isFile() && !schem.delete()) {
                 plugin.getLogger().fine("Could not delete schematic " + schem.getName());
             }
@@ -74,18 +80,32 @@ public class TemplateManager {
         if (id == null) return null;
         DungeonTemplate exact = templates.get(id);
         if (exact != null) return exact;
+        String normalized = Worlds.normalizeWorldName(id);
+        DungeonTemplate byNormalized = templates.get(normalized);
+        if (byNormalized != null) return byNormalized;
         return templates.values().stream()
                 .filter(template -> template.getId().equalsIgnoreCase(id))
                 .findFirst()
                 .orElse(null);
     }
 
+    public DungeonTemplate getTemplateByWorld(String worldName) {
+        if (worldName == null || worldName.isBlank()) return null;
+        for (DungeonTemplate template : templates.values()) {
+            if (template.getWorldName().equalsIgnoreCase(worldName)
+                    || template.getId().equalsIgnoreCase(worldName)) {
+                return template;
+            }
+        }
+        return null;
+    }
+
     public List<DungeonTemplate> getTemplatesByRank(String rank) {
         List<DungeonTemplate> result = new ArrayList<>();
         if (rank == null) return result;
-        for (String id : rankTemplates.getOrDefault(rank.toUpperCase(), Collections.emptyList())) {
-            DungeonTemplate t = templates.get(id);
-            if (t != null) result.add(t);
+        for (String id : rankTemplates.getOrDefault(rank.toUpperCase(Locale.ROOT), Collections.emptyList())) {
+            DungeonTemplate template = templates.get(id);
+            if (template != null) result.add(template);
         }
         return result;
     }
@@ -100,12 +120,55 @@ public class TemplateManager {
         return new ArrayList<>(templates.values());
     }
 
+    public List<DungeonTemplate> getUnassignedTemplates() {
+        List<DungeonTemplate> result = new ArrayList<>();
+        for (DungeonTemplate template : templates.values()) {
+            if (!template.isAssigned()) result.add(template);
+        }
+        return result;
+    }
+
     public void registerFromWorld(String templateId, String rank, String worldName, Player player) {
         assign(player, templateId, rank, worldName);
     }
 
     /**
-     * Scan a builder world and put it in the rank's random template pool.
+     * Creates (or returns) a draft template for a builder world so regions can be
+     * added before the dungeon is assigned to any rank.
+     */
+    public DungeonTemplate ensureDraftTemplate(String rawName) {
+        if (!Worlds.isValidWorldName(rawName)) return null;
+        String id = Worlds.normalizeWorldName(rawName);
+        DungeonTemplate existing = getTemplate(id);
+        if (existing != null) return existing;
+        World world = plugin.getWorldManager().getOrLoadWorld(id);
+        if (world == null) return null;
+        return createDraftTemplate(id, world);
+    }
+
+    public DungeonTemplate createDraftTemplate(String id, World world) {
+        if (world == null || !Worlds.isValidWorldName(id)) return null;
+        String normalizedId = Worlds.normalizeWorldName(id);
+        DungeonTemplate existing = getTemplate(normalizedId);
+        if (existing != null) return existing;
+
+        Location entrance = world.getSpawnLocation();
+        if (entrance == null) {
+            entrance = new Location(world, 0.5, 128, 0.5);
+        }
+
+        DungeonTemplate template = new DungeonTemplate(
+                normalizedId, "", normalizedId, world.getName(), world.getName(),
+                entrance, System.currentTimeMillis());
+        template.addMarker(new Marker("ENTRANCE", entrance, null));
+        registerTemplate(template);
+        plugin.getDatabaseManager().saveTemplate(template);
+        plugin.getLogger().info("Created draft dungeon template '" + normalizedId + "'.");
+        return template;
+    }
+
+    /**
+     * Scan a builder world and put it in one or more rank random template pools.
      * Re-assigning the same name updates rank/markers and keeps regions.
      */
     public boolean assign(CommandSender sender, String name, String rank) {
@@ -117,13 +180,20 @@ public class TemplateManager {
             MessageUtils.send(sender, "dungeon-invalid-name");
             return false;
         }
-        if (!plugin.getConfigManager().isValidRank(rank)) {
+        List<String> ranks = Ranks.parse(rank);
+        if (ranks.isEmpty()) {
             MessageUtils.send(sender, "invalid-rank");
             return false;
         }
+        for (String parsed : ranks) {
+            if (!plugin.getConfigManager().isValidRank(parsed)) {
+                MessageUtils.send(sender, "invalid-rank");
+                return false;
+            }
+        }
+
         String normalizedId = Worlds.normalizeWorldName(templateId);
         String normalizedWorld = Worlds.normalizeWorldName(worldName);
-        String rankKey = rank.toUpperCase();
         World world = plugin.getWorldManager().getOrLoadWorld(normalizedWorld);
         if (world == null) {
             MessageUtils.send(sender, "template-world-missing", "world", normalizedWorld);
@@ -152,41 +222,48 @@ public class TemplateManager {
                         + existing.getWorldName() + "'. Unregister it before assigning a different world.");
                 return false;
             }
-            existing.setRank(rankKey);
+            existing.setRanks(ranks);
             existing.setEntrance(entrance);
             existing.clearMarkers();
-            for (Marker m : scanner.getMarkers()) {
-                existing.addMarker(m);
+            for (Marker marker : scanner.getMarkers()) {
+                existing.addMarker(marker);
             }
             template = existing;
             rebuildRankIndex();
         } else {
-            template = new DungeonTemplate(normalizedId, rankKey, normalizedId, world.getName(), world.getName(),
-                    entrance, System.currentTimeMillis());
-            for (Marker m : scanner.getMarkers()) {
-                template.addMarker(m);
+            template = new DungeonTemplate(normalizedId, Ranks.format(ranks), normalizedId, world.getName(),
+                    world.getName(), entrance, System.currentTimeMillis());
+            for (Marker marker : scanner.getMarkers()) {
+                template.addMarker(marker);
             }
             registerTemplate(template);
         }
         plugin.getDatabaseManager().saveTemplate(template);
-        MessageUtils.send(sender, "dungeon-assigned", "name", normalizedId, "rank", rankKey);
-        plugin.getLogger().info("Assigned template '" + normalizedId + "' to rank " + rankKey
-                + " (" + getTemplatesByRank(rankKey).size() + " in pool).");
+        MessageUtils.send(sender, "dungeon-assigned", "name", normalizedId, "rank", template.getRanksSerialized());
+        plugin.getLogger().info("Assigned template '" + normalizedId + "' to rank(s) "
+                + template.getRanksSerialized() + ".");
         return true;
     }
 
     public boolean addRegion(String templateId, int wave, Location pos1, Location pos2, String type) {
         DungeonTemplate template = getTemplate(templateId);
+        if (template == null) {
+            template = ensureDraftTemplate(templateId);
+        }
         if (template == null || wave < 1 || pos1 == null || pos2 == null
                 || pos1.getWorld() == null || pos2.getWorld() == null
                 || !Worlds.same(pos1, pos2)
                 || !template.getWorldName().equalsIgnoreCase(pos1.getWorld().getName())) {
             return false;
         }
-        String normalizedType = type == null ? "" : type.toUpperCase(Locale.ROOT);
-        if (!normalizedType.equals("MOB") && !normalizedType.equals("ELITE")) return false;
+        String normalizedType = RegionTypes.normalize(type);
+        if (normalizedType == null) return false;
 
-        String regionId = UUID.randomUUID().toString().substring(0, 8);
+        String regionId;
+        do {
+            regionId = UUID.randomUUID().toString().substring(0, 8);
+        } while (template.getRegion(regionId) != null);
+
         RegionMarker region = new RegionMarker(
                 regionId, wave, template.getWorldName(), pos1, pos2, normalizedType);
         template.addRegion(region);

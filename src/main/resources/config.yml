@@ -47,6 +47,9 @@ markers:
   teleport-offset-y: 1.0
 
 wave-tool: "STICK"
+# Extra items that show wave-region outlines while held (wave-tool and DEBUG_STICK are always included).
+debug-tools:
+  - BLAZE_ROD
 
 exit:
   area-radius: 5

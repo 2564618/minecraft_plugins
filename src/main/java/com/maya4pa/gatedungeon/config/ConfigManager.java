@@ -1,20 +1,25 @@
 package com.maya4pa.gatedungeon.config;
 
 import com.maya4pa.gatedungeon.GateDungeonPlugin;
+import com.maya4pa.gatedungeon.util.RegionTypes;
 import org.bukkit.Material;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.inventory.ItemStack;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 public class ConfigManager {
     private final GateDungeonPlugin plugin;
     private FileConfiguration config;
     private FileConfiguration mobsConfig;
+    private Set<Material> debugTools = Set.of(Material.STICK, Material.DEBUG_STICK);
 
     public ConfigManager(GateDungeonPlugin plugin) {
         this.plugin = plugin;
@@ -28,7 +33,22 @@ public class ConfigManager {
             plugin.saveResource("mobs.yml", false);
         }
         mobsConfig = YamlConfiguration.loadConfiguration(mobsFile);
+        refreshDebugTools();
         validateConfiguration();
+    }
+
+    private void refreshDebugTools() {
+        Set<Material> tools = new HashSet<>();
+        tools.add(getWaveTool());
+        tools.add(Material.DEBUG_STICK);
+        if (config != null) {
+            for (String name : config.getStringList("debug-tools")) {
+                if (name == null || name.isBlank()) continue;
+                Material material = Material.matchMaterial(name.toUpperCase(Locale.ROOT));
+                if (material != null) tools.add(material);
+            }
+        }
+        debugTools = Set.copyOf(tools);
     }
 
     private void validateConfiguration() {
@@ -94,9 +114,21 @@ public class ConfigManager {
     }
 
     public Material getWaveTool() {
-        String materialName = config.getString("wave-tool", "STICK");
+        String materialName = config == null ? "STICK" : config.getString("wave-tool", "STICK");
         Material material = materialName == null ? null : Material.matchMaterial(materialName.toUpperCase(Locale.ROOT));
         return material != null ? material : Material.STICK;
+    }
+
+    public Set<Material> getDebugTools() {
+        return debugTools;
+    }
+
+    public boolean isDebugTool(ItemStack item) {
+        return item != null && !item.getType().isAir() && debugTools.contains(item.getType());
+    }
+
+    public boolean isDebugTool(Material material) {
+        return material != null && debugTools.contains(material);
     }
 
     public double getTeleportOffsetY() { return config.getDouble("markers.teleport-offset-y", 1.0); }
@@ -125,7 +157,11 @@ public class ConfigManager {
             int amount = parseInt(map.get("amount"), 1);
             double health = parseDouble(map.get("health"), -1);
             double damage = parseDouble(map.get("damage"), -1);
-            result.add(new MobEntry(type, name, amount, health, damage));
+            String category = null;
+            if (map.get("category") != null) category = String.valueOf(map.get("category"));
+            else if (map.get("type-group") != null) category = String.valueOf(map.get("type-group"));
+            else if (map.get("elite") != null) category = String.valueOf(map.get("elite"));
+            result.add(new MobEntry(type, name, amount, health, damage, category));
         }
         return result;
     }
@@ -164,17 +200,46 @@ public class ConfigManager {
         public final int amount;
         public final double health;
         public final double damage;
+        public final String category;
 
         public MobEntry(String type, String name, int amount) {
-            this(type, name, amount, -1, -1);
+            this(type, name, amount, -1, -1, null);
         }
 
         public MobEntry(String type, String name, int amount, double health, double damage) {
+            this(type, name, amount, health, damage, null);
+        }
+
+        public MobEntry(String type, String name, int amount, double health, double damage, String category) {
             this.type = type;
             this.name = name;
             this.amount = amount;
             this.health = health;
             this.damage = damage;
+            this.category = inferCategory(name, category);
+        }
+
+        public boolean isElite() {
+            return RegionTypes.ELITE.equals(category);
+        }
+
+        public static String inferCategory(String name, String explicit) {
+            if (explicit != null && !explicit.isBlank()) {
+                String normalized = RegionTypes.normalize(explicit);
+                if (normalized != null) return normalized;
+                if (explicit.equalsIgnoreCase("true") || explicit.equalsIgnoreCase("yes")
+                        || explicit.equals("1")) {
+                    return RegionTypes.ELITE;
+                }
+                if (explicit.equalsIgnoreCase("false") || explicit.equalsIgnoreCase("no")
+                        || explicit.equals("0")) {
+                    return RegionTypes.MOB;
+                }
+            }
+            if (name != null && name.toLowerCase(Locale.ROOT).contains("elite")) {
+                return RegionTypes.ELITE;
+            }
+            return RegionTypes.MOB;
         }
     }
 
